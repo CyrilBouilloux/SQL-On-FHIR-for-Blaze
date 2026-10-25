@@ -1,0 +1,70 @@
+{
+  "resourceType": "Measure",
+  "id": "DiabeteNonEquilibre",
+  "url": "http://fhir-platform.local/Measure/DiabeteNonEquilibre",
+  "name": "DiabeteNonEquilibre",
+  "status": "active",
+  "library": [
+    "http://fhir-platform.local/Library/DiabeteNonEquilibre"
+  ],
+  "scoring": {
+    "coding": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/measure-scoring",
+        "code": "proportion"
+      }
+    ]
+  },
+  "group": [
+    {
+      "id": "g1",
+      "population": [
+        {
+          "id": "ip",
+          "code": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                "code": "initial-population"
+              }
+            ]
+          },
+          "criteria": {
+            "language": "text/cql-identifier",
+            "expression": "Diabetique"
+          }
+        },
+        {
+          "id": "denom",
+          "code": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                "code": "denominator"
+              }
+            ]
+          },
+          "criteria": {
+            "language": "text/cql-identifier",
+            "expression": "Diabetique"
+          }
+        },
+        {
+          "id": "num",
+          "code": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                "code": "numerator"
+              }
+            ]
+          },
+          "criteria": {
+            "language": "text/cql-identifier",
+            "expression": "Non equilibre"
+          }
+        }
+      ]
+    }
+  ]
+}

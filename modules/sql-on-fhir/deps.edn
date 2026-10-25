@@ -1,0 +1,28 @@
+;; Module complementaire (ADR 0003) : se teste contre le jar de l'image publiee.
+;; Rien de Blaze n'est declare ici en :deps — le jar l'apporte a l'execution.
+{:paths ["src" "resources"]
+
+ :aliases
+ {;; Classpath d'execution et de test : jar publie + aides de test de Blaze (chemins SEULS,
+  ;; sans leurs dependances locales, qui ramenerait les sources de Blaze dans le classpath).
+  :test
+  {:extra-paths ["test" "conformance"
+                 "../../amont/blaze/modules/test-util/src"
+                 ;; aides de test des suites amont (tests-amont.edn), chemins SEULS
+                 "../../amont/blaze/modules/fhir-test-util/src"
+                 "../../amont/blaze/modules/module-test-util/src"
+                 "../../amont/blaze/modules/scheduler-test-util/src"]
+   :extra-deps
+   {blaze/publie {:local/root "../../.work/blaze-standalone.jar"}
+    org.clojars.akiel/iota {:mvn/version "0.1"}
+    org.clojure/math.combinatorics {:mvn/version "0.3.2"}
+    org.clojure/test.check {:mvn/version "1.1.3"}
+    org.slf4j/slf4j-nop {:mvn/version "2.0.18"}}}
+
+  :kaocha
+  {:extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}}
+   :main-opts ["-m" "kaocha.runner"]}
+
+  :coverage
+  {:extra-deps {lambdaisland/kaocha-cloverage {:mvn/version "1.1.89"}}
+   :main-opts ["-m" "kaocha.runner" "--profile" "coverage"]}}}

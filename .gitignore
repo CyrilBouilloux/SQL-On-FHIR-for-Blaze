@@ -1,0 +1,25 @@
+.banc/
+bench/baselines/last.json
+.env
+*.env.local
+__pycache__/
+.venv/
+.work/
+.outils/
+amont/
+.lsp/.cache/
+.clj-kondo/.cache/
+.cpcache/
+target/
+build/staging/
+
+# Donnees generees du jeu de reference (ADR 0007) : hors git.
+bench/datasets/out/
+
+# Archives du jeu de référence (ADR 0007, amendement 2026-10-11) : hors git, l'empreinte est dans bench/datasets/empreintes.sha256.
+bench/datasets/archives/
+
+# Poste de développement (F-007)
+modules/*/.calva/
+.clj-kondo/inline-configs/
+build/*.jar

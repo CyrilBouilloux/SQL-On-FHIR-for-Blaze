@@ -1,0 +1,8 @@
+# GABARIT du Chart.yaml — voir kubernetes/chart/deriver.sh.
+# Helm ne template pas Chart.yaml : le fichier servi est DERIVE de versions.env.
+apiVersion: v2
+name: blaze-platform
+description: Serveur FHIR R4 Blaze (standalone) derriere un reverse proxy nginx.
+type: application
+version: "@CHART_VERSION@"
+appVersion: "@BLAZE_VERSION@"

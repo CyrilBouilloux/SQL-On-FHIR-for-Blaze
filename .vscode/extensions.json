@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "betterthantomorrow.calva",
+    "borkdude.clj-kondo",
+    "ms-azuretools.vscode-containers",
+    "redhat.vscode-yaml"
+  ]
+}

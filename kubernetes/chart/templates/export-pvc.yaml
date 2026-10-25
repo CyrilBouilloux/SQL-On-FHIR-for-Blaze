@@ -1,0 +1,20 @@
+{{/* Volume des fichiers de $viewdefinition-export (F-007, ADR 0008 point 6, R3) :
+     un PVC séparé, PAS un second volumeClaimTemplate (refusé par l'API : les
+     volumeClaimTemplates d'un StatefulSet sont immuables). Conservé à
+     `helm uninstall` ; il se supprime à la main. */}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-export
+  namespace: {{ .Values.namespace.name }}
+  labels: {{- include "blaze.etiquettes" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.blaze.viewdefinitionExport.stockage.classe }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.blaze.viewdefinitionExport.stockage.taille }}

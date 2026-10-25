@@ -1,0 +1,2 @@
+;; Memes regles que Blaze (amont/blaze/.clj-kondo/root) pour le code ecrit ici.
+{:config-paths ["../amont/blaze/.clj-kondo/root"]}

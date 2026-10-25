@@ -1,0 +1,6 @@
+{
+  "resourceType": "Organization",
+  "id": "fhir-platform-ig-frcore-220-organization-non-conforme",
+  "meta": { "profile": ["https://hl7.fr/ig/fhir/core/StructureDefinition/fr-core-organization|2.2.0"], "tag": [{"system":"http://fhir-platform.local/ig-controle","code":"fhir-platform-ig-frcore-220"}] },
+  "active": true
+}

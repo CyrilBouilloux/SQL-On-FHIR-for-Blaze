@@ -1,0 +1,23 @@
+{
+  "resourceType": "Encounter",
+  "id": "fhir-platform-ig-frcore-220-encounter-conforme",
+  "meta": { "profile": ["https://hl7.fr/ig/fhir/core/StructureDefinition/fr-core-encounter|2.2.0"], "tag": [{"system":"http://fhir-platform.local/ig-controle","code":"fhir-platform-ig-frcore-220"}] },
+  "identifier": [ {
+    "type": { "coding": [ {
+      "system": "https://hl7.fr/ig/fhir/core/CodeSystem/fr-core-cs-identifier-type",
+      "code": "VN"
+    } ] },
+    "system": "http://fhir-platform.local/numero-de-venue",
+    "value": "VN-0000001"
+  } ],
+  "status": "finished",
+  "class": {
+    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+    "code": "IMP",
+    "display": "inpatient encounter"
+  },
+  "subject": { "reference": "Patient/fhir-platform-ig-frcore-220-patient-conforme" },
+  "participant": [ { "individual": { "reference": "PractitionerRole/fhir-platform-ig-frcore-220-practitionerrole-conforme" } } ],
+  "period": { "start": "2026-03-02T08:00:00+01:00", "end": "2026-03-05T11:30:00+01:00" },
+  "serviceProvider": { "reference": "Organization/fhir-platform-ig-frcore-220-organization-conforme" }
+}

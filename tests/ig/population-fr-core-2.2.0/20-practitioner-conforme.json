@@ -1,0 +1,17 @@
+{
+  "resourceType": "Practitioner",
+  "id": "fhir-platform-ig-frcore-220-practitioner-conforme",
+  "meta": { "profile": ["https://hl7.fr/ig/fhir/core/StructureDefinition/fr-core-practitioner|2.2.0"], "tag": [{"system":"http://fhir-platform.local/ig-controle","code":"fhir-platform-ig-frcore-220"}] },
+  "identifier": [ {
+    "type": { "coding": [ {
+      "system": "https://hl7.fr/ig/fhir/core/CodeSystem/fr-core-cs-v2-0203",
+      "code": "RPPS"
+    } ] },
+    "system": "https://rpps.esante.gouv.fr",
+    "value": "10000000001"
+  } ],
+  "active": true,
+  "name": [ { "use": "official", "family": "ZZTEST-PRATICIEN", "given": ["Camille"] } ],
+  "telecom": [ { "system": "email", "value": "camille.zztest@example.org", "use": "work" } ],
+  "gender": "female"
+}

@@ -1,0 +1,9 @@
+{
+  "resourceType": "PractitionerRole",
+  "id": "fhir-platform-ig-frcore-220-practitionerrole-conforme",
+  "meta": { "profile": ["https://hl7.fr/ig/fhir/core/StructureDefinition/fr-core-practitioner-role|2.2.0"], "tag": [{"system":"http://fhir-platform.local/ig-controle","code":"fhir-platform-ig-frcore-220"}] },
+  "active": true,
+  "practitioner": { "reference": "Practitioner/fhir-platform-ig-frcore-220-practitioner-conforme" },
+  "organization": { "reference": "Organization/fhir-platform-ig-frcore-220-organization-conforme" },
+  "telecom": [ { "system": "phone", "value": "0102030406", "use": "work" } ]
+}

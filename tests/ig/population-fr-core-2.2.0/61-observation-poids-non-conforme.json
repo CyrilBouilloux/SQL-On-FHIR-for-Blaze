@@ -1,0 +1,14 @@
+{
+  "resourceType": "Observation",
+  "id": "fhir-platform-ig-frcore-220-observation-poids-non-conforme",
+  "meta": { "profile": ["https://hl7.fr/ig/fhir/core/StructureDefinition/fr-core-observation-body-weight|2.2.0"], "tag": [{"system":"http://fhir-platform.local/ig-controle","code":"fhir-platform-ig-frcore-220"}] },
+  "status": "final",
+  "category": [ { "coding": [ {
+    "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+    "code": "vital-signs"
+  } ] } ],
+  "code": { "text": "poids du patient" },
+  "subject": { "reference": "Patient/fhir-platform-ig-frcore-220-patient-conforme" },
+  "effectiveDateTime": "2026-03-02T09:20:00+01:00",
+  "valueQuantity": { "value": 151, "unit": "livres", "system": "http://unitsofmeasure.org", "code": "[lb_av]" }
+}

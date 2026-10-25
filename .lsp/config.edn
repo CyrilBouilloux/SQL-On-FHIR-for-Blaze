@@ -1,0 +1,9 @@
+;; clojure-lsp : navigation dans Blaze (amont/, lecture seule) depuis les modules.
+;; Les sources de Blaze arrivent par l'alias :nav comme DEPENDANCE : on y navigue, on y
+;; trouve les usages, mais elles ne sont ni linteees ni formatees (ADR 0004).
+{:source-aliases #{:modules}
+ :project-specs [{:project-path "deps.edn"
+                  :classpath-cmd ["clojure" "-A:nav:modules" "-Spath"]}]
+ :source-paths ["modules/sql-on-fhir/src" "modules/sql-on-fhir/test"]
+ :cljfmt {:file "cljfmt.edn"}
+ :lint-project-files-after-startup? false}

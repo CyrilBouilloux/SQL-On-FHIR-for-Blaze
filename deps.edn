@@ -1,0 +1,21 @@
+;; Racine du depot : sert aux OUTILS (navigation, LSP, REPL), pas a la livraison.
+;; La livraison est l'image construite par build/Dockerfile (ADR 0003).
+;;
+;;   :nav     sources de Blaze (amont/, lecture seule) -> aller a la definition, trouver les
+;;            usages. Ne s'execute jamais : a ne pas combiner avec :publie.
+;;   :publie  le jar de l'image PUBLIEE (.work/, scripts/outils.sh jar) -> ce qui s'execute
+;;            et se teste. Les modules se testent CONTRE ce jar, jamais contre les sources.
+;;   :modules les sources ecrites ici.
+{:paths []
+
+ :aliases
+ {:modules
+  {:extra-paths ["modules/sql-on-fhir/src"
+                 "modules/sql-on-fhir/test"
+                 "modules/sql-on-fhir/resources"]}
+
+   :nav
+   {:extra-deps {samply/blaze {:local/root "amont/blaze"}}}
+
+   :publie
+   {:extra-deps {blaze/publie {:local/root ".work/blaze-standalone.jar"}}}}}

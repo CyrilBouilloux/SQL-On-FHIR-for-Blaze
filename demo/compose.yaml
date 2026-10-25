@@ -1,0 +1,58 @@
+# Démonstration de l'ensemble sur un poste (F-037, ADR 0013) — OUTIL DE POSTE, HORS LIVRAISON.
+# Kubernetes reste la seule livraison (CLAUDE.md §1.7) ; ceci n'éprouve pas le chart.
+# Lancer par `bash demo/demo.sh monter` : les variables viennent de versions.env (--env-file)
+# et de demo/demo.sh ; aucun numéro de version n'est écrit ici.
+# Tous les objets portent le préfixe `demo-blaze` (projet, conteneurs, réseau, volumes).
+name: demo-blaze
+
+services:
+  blaze:
+    # Image publiée épinglée par empreinte ; le jar du module est posé DEVANT le jar de Blaze
+    # dans le classpath (ADR 0003, amendement du 2026-10-17, forme a) : aucune image construite.
+    image: samply/blaze:${BLAZE_VERSION}@${BLAZE_IMAGE_DIGEST}
+    container_name: demo-blaze-blaze
+    # CMD de l'image amont avec -cp au lieu de -jar (identique à build/Dockerfile).
+    command:
+      - sh
+      - -c
+      - JAVA_TOOL_OPTIONS="$${BASE_JAVA_TOOL_OPTIONS} $${JAVA_TOOL_OPTIONS}" exec java -cp "/app/addon/blaze-addon.jar:/app/*" blaze.core
+    environment:
+      BASE_URL: http://127.0.0.1:${DEMO_PORT}
+      JAVA_TOOL_OPTIONS: -Xmx${DEMO_BLAZE_XMX}
+      # Variables exigées au démarrage par le module ($viewdefinition-export), valeurs du chart.
+      VIEWDEFINITION_EXPORT_DIR: /app/export
+      VIEWDEFINITION_EXPORT_MAX_BYTES: "${DEMO_EXPORT_MAX_BYTES}"
+      VIEWDEFINITION_EXPORT_RETENTION_SECONDS: "86400"
+      VIEWDEFINITION_EXPORT_CLEANUP_PERIOD_SECONDS: "300"
+    volumes:
+      - ${DEMO_JAR}:/app/addon/blaze-addon.jar:ro
+      - donnees:/app/data
+    tmpfs:
+      - /tmp:exec,mode=1777
+      - /app/export:mode=1777,size=${DEMO_EXPORT_MIO}m
+    mem_limit: ${DEMO_BLAZE_MEMOIRE}
+    cpus: 2
+    networks: [reseau]
+    restart: "no"
+
+  nginx:
+    image: nginxinc/nginx-unprivileged:${NGINX_VERSION}@${NGINX_IMAGE_DIGEST}
+    container_name: demo-blaze-nginx
+    depends_on: [blaze]
+    volumes:
+      # La source suivie de la configuration du chart, montée telle quelle (garde-fou 2 : plafond
+      # _include) ; le fichier dérivé du chart (files/nginx.conf) est ignoré par git, absent d'une copie.
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - 127.0.0.1:${DEMO_PORT}:8090
+    mem_limit: 128m
+    networks: [reseau]
+    restart: "no"
+
+networks:
+  reseau:
+    name: demo-blaze-reseau
+
+volumes:
+  donnees:
+    name: demo-blaze-donnees

@@ -1,0 +1,22 @@
+{
+  "calva.clojureLspPath": "${workspaceFolder}/.outils/bin/clojure-lsp",
+  "calva.enableClojureLspOnStart": true,
+  "calva.useLiveShareForRepl": false,
+  "calva.replConnectSequences": [
+    {
+      "name": "module (jar publie)",
+      "projectType": "deps.edn",
+      "cljsType": "none",
+      "menuSelections": { "cljAliases": ["publie", "modules"] }
+    }
+  ],
+  "clj-kondo.executable": "${workspaceFolder}/.outils/bin/clj-kondo",
+  "files.exclude": { "**/.cpcache": true, "**/.lsp/.cache": true },
+  "search.exclude": { "amont/blaze/modules/frontend": true },
+  "files.watcherExclude": { "amont/**": true, ".outils/**": true, ".work/**": true },
+  "terminal.integrated.env.linux": {
+    "JAVA_HOME": "${workspaceFolder}/.outils/jdk",
+    "PATH": "${workspaceFolder}/.outils/bin:${workspaceFolder}/.outils/jdk/bin:${env:PATH}"
+  },
+  "[clojure]": { "editor.formatOnSave": true }
+}

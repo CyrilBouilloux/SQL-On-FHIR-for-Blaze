@@ -1,0 +1,74 @@
+{{/* Reverse proxy de politique devant Blaze (garde-fou 2). */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx
+  namespace: {{ .Values.namespace.name }}
+  labels: {{- include "blaze.etiquettes" . | nindent 4 }}
+data:
+  nginx.conf: |
+{{ .Files.Get "files/nginx.conf" | indent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: {{ .Values.namespace.name }}
+  labels: {{- include "blaze.etiquettes" . | nindent 4 }}
+spec:
+  type: {{ .Values.exposition.type }}
+  selector:
+    app.kubernetes.io/name: nginx
+  ports:
+    - name: http
+      port: 8090
+      targetPort: http
+      {{- if eq .Values.exposition.type "NodePort" }}
+      nodePort: {{ .Values.exposition.nodePort }}
+      {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: {{ .Values.namespace.name }}
+  labels: {{- include "blaze.etiquettes" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx
+  template:
+    metadata:
+      labels:
+        {{- include "blaze.etiquettes" . | nindent 8 }}
+        app.kubernetes.io/name: nginx
+      annotations:
+        blaze-platform/nginx-conf: {{ .Files.Get "files/nginx.conf" | sha256sum | trunc 16 }}
+    spec:
+      securityContext: {{- include "blaze.sécuritéPod" . | nindent 8 }}
+      containers:
+        - name: nginx
+          {{- /* Empreinte dérivée de versions.env (NGINX_IMAGE_DIGEST) : refus si absente ou mal formée. */}}
+          {{- if not (regexMatch "^sha256:[0-9a-f]{64}$" (toString .Values.versions.nginxDigest)) }}{{ fail (printf "versions.nginxDigest : sha256:<64 hexadécimaux> attendu (kubernetes/chart/deriver.sh le dérive de versions.env), reçu %q" (toString .Values.versions.nginxDigest)) }}{{ end }}
+          image: "{{ .Values.image.nginx.repository }}:{{ .Values.versions.nginx }}@{{ .Values.versions.nginxDigest }}"
+          imagePullPolicy: {{ .Values.image.nginx.pullPolicy }}
+          securityContext: {{- include "blaze.sécuritéConteneur" . | nindent 12 }}
+          ports:
+            - { name: http, containerPort: 8090 }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          # Vivacité sur nginx seul : /healthz traverse Blaze.
+          livenessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 20
+          resources: {{- toYaml .Values.ressources.nginx | nindent 12 }}
+          volumeMounts:
+            - { name: config, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+            - { name: cache, mountPath: /var/cache/nginx }
+      volumes:
+        - { name: config, configMap: { name: nginx } }
+        - { name: tmp, emptyDir: {} }
+        - { name: cache, emptyDir: {} }

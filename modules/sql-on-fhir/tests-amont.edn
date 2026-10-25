@@ -1,0 +1,21 @@
+;; Suites de tests amont (fhir-path, db) au tag de BLAZE_VERSION, jouees contre le JAR publie
+;; (ADR 0003, point 3) : amont/ ne fournit que les fichiers de test, jamais le code execute.
+;; Tourne depuis amont/blaze/modules/db (voir Makefile) : chemins relatifs a ce repertoire.
+;;   make test-amont-jar     jar seul
+;;   make test-amont-module  jar + tous les namespaces de src/ (hook blaze.addon.harnais)
+#kaocha/v1
+ #merge
+  [{:tests [{:id :fhir-path
+             :test-paths ["../fhir-path/test"]
+             :ns-patterns ["-test$"]}
+            {:id :db
+             :test-paths ["test"]
+             :ns-patterns ["-test$"]}]
+    ;; le jar est compile en direct-linking (amont build.clj:99) : un test amont qui redefinit
+    ;; une fonction du jar attend sans fin ; il est interrompu et compte pour un echec
+    :plugins [:kaocha.plugin/hooks]
+    :randomize? false
+    :kaocha.hooks/post-load [blaze.addon.harnais/delai-par-test]
+    :reporter kaocha.report/documentation
+    :color? false}
+   #profile {:module {:kaocha.hooks/pre-load [blaze.addon.harnais/charger-module]}}]

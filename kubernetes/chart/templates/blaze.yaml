@@ -1,0 +1,114 @@
+{{/* Blaze, variante standalone : journal de transactions et magasin de
+     ressources embarqués (RocksDB) dans UN nœud, sur un volume persistant.
+     Une seule réplique, par construction (ADR 0001). Le Service s'appelle
+     `blaze` : c'est l'amont déclaré dans nginx/nginx.conf. */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: blaze
+  namespace: {{ .Values.namespace.name }}
+  labels: {{- include "blaze.etiquettes" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: blaze
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: blaze
+  namespace: {{ .Values.namespace.name }}
+  labels: {{- include "blaze.etiquettes" . | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: blaze
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: blaze
+  template:
+    metadata:
+      labels:
+        {{- include "blaze.etiquettes" . | nindent 8 }}
+        app.kubernetes.io/name: blaze
+    spec:
+      securityContext: {{- include "blaze.sécuritéPod" . | nindent 8 }}
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: blaze
+          {{- /* Registre renseigné : empreinte obligatoire. Sans registre : image locale, <dépôt>:<étiquette>, sans empreinte (F-034, T-101). */}}
+          {{- $reg := toString .Values.image.blaze.registry }}
+          {{- $dig := toString .Values.image.blaze.digest }}
+          {{- if and $reg (not $dig) }}{{ fail "image.blaze.digest : obligatoire quand image.blaze.registry est renseigné" }}{{ end }}
+          {{- if and $dig (not (regexMatch "^sha256:[0-9a-f]{64}$" $dig)) }}{{ fail (printf "image.blaze.digest : sha256:<64 hexadécimaux> attendu, reçu %q" $dig) }}{{ end }}
+          {{- if and $dig (not $reg) }}{{ fail "image.blaze.digest : sans effet quand image.blaze.registry est vide (image locale, sans empreinte)" }}{{ end }}
+          {{- if eq (toString .Values.image.blaze.tag) "latest" }}{{ fail "image.blaze.tag : latest interdit (étiquette flottante, CLAUDE.md §1)" }}{{ end }}
+          image: "{{ if $reg }}{{ $reg }}/{{ end }}{{ .Values.image.blaze.repository }}:{{ required "image.blaze.tag : étiquette de l'image du module" .Values.image.blaze.tag }}{{ if $dig }}@{{ $dig }}{{ end }}"
+          imagePullPolicy: {{ .Values.image.blaze.pullPolicy }}
+          securityContext: {{- include "blaze.sécuritéConteneur" . | nindent 12 }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          env:
+            - { name: BASE_URL, value: {{ .Values.blaze.baseUrl | quote }} }
+            - { name: JAVA_TOOL_OPTIONS, value: "-Xmx{{ .Values.blaze.xmx }}" }
+            {{- /* Chaque valeur est validée sur son TYPE avant tout rendu (jamais de repli permissif). */}}
+            {{- $vr := .Values.blaze.viewdefinitionRun }}
+            {{- if not (kindIs "bool" $vr.actif) }}{{ fail (printf "blaze.viewdefinitionRun.actif : booléen attendu (true|false, --set et non --set-string), reçu %v" $vr.actif) }}{{ end }}
+            {{- $p := $vr.plafondLignes }}
+            {{- if kindIs "float64" $p }}{{ if eq $p (floor $p) }}{{ $p = printf "%d" (int64 $p) }}{{ end }}{{ end }}
+            {{- if not (regexMatch "^[1-9][0-9]*$" (toString $p)) }}{{ fail "blaze.viewdefinitionRun.plafondLignes : entier >= 1 attendu" }}{{ end }}
+            - { name: VIEWDEFINITION_RUN_MAX_ROWS, value: {{ toString $p | quote }} }
+            {{- if not $vr.actif }}
+            - { name: DISABLE_VIEWDEFINITION_RUN, value: "true" }
+            {{- end }}
+            {{- /* Opération $viewdefinition-export (F-007, ADR 0008 point 7). Même convention
+                   que ci-dessus : `actif: false` pose DISABLE_VIEWDEFINITION_EXPORT=true ; `true`
+                   ne pose rien. DISABLE_VIEWDEFINITION_EXPORT=false (troisième état) se pose par
+                   `blaze.env`, qui rend la valeur telle quelle. */}}
+            {{- $ve := .Values.blaze.viewdefinitionExport }}
+            {{- if not (kindIs "bool" $ve.actif) }}{{ fail (printf "blaze.viewdefinitionExport.actif : booléen attendu (true|false, --set et non --set-string), reçu %v" $ve.actif) }}{{ end }}
+            {{- if not (regexMatch "^/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$" (toString $ve.dossier)) }}{{ fail (printf "blaze.viewdefinitionExport.dossier : chemin absolu attendu, reçu %v" $ve.dossier) }}{{ end }}
+            {{- if or (eq $ve.dossier "/app/data") (hasPrefix "/app/data/" $ve.dossier) (eq $ve.dossier "/tmp") (hasPrefix "/tmp/" $ve.dossier) }}{{ fail (printf "blaze.viewdefinitionExport.dossier : %s est sur un autre volume (data ou tmp) ; le dossier d'export a le sien" $ve.dossier) }}{{ end }}
+            {{- if not (regexMatch "^[1-9][0-9]*(Ki|Mi|Gi|Ti)$" (toString $ve.stockage.taille)) }}{{ fail (printf "blaze.viewdefinitionExport.stockage.taille : quantité Kubernetes entière attendue (ex. 10Gi), reçu %v" $ve.stockage.taille) }}{{ end }}
+            - { name: VIEWDEFINITION_EXPORT_DIR, value: {{ $ve.dossier | quote }} }
+            - { name: VIEWDEFINITION_EXPORT_MAX_BYTES, value: {{ include "blaze.entier" (dict "nom" "blaze.viewdefinitionExport.plafondOctets" "v" $ve.plafondOctets) | quote }} }
+            - { name: VIEWDEFINITION_EXPORT_RETENTION_SECONDS, value: {{ include "blaze.entier" (dict "nom" "blaze.viewdefinitionExport.conservationSecondes" "v" $ve.conservationSecondes) | quote }} }
+            - { name: VIEWDEFINITION_EXPORT_CLEANUP_PERIOD_SECONDS, value: {{ include "blaze.entier" (dict "nom" "blaze.viewdefinitionExport.periodeNettoyageSecondes" "v" $ve.periodeNettoyageSecondes) | quote }} }
+            {{- if not $ve.actif }}
+            - { name: DISABLE_VIEWDEFINITION_EXPORT, value: "true" }
+            {{- end }}
+            {{- range $k, $v := .Values.blaze.env }}
+            - { name: {{ $k }}, value: {{ $v | quote }} }
+            {{- end }}
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+            failureThreshold: 6
+          resources: {{- toYaml .Values.ressources.blaze | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /app/data }
+            - { name: tmp, mountPath: /tmp }
+            - { name: export, mountPath: {{ .Values.blaze.viewdefinitionExport.dossier | quote }} }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - name: export
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-export
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.blaze.stockage.classe }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.blaze.stockage.taille }}

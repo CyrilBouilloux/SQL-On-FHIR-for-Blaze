@@ -1,0 +1,14 @@
+# Preuves de A (F-004 (c), liste des absences) : un bloc par test de A. Le controle `controle-absences.sh` les REJOUE
+# (il ne se fie pas a ce fichier pour le resultat) : il lit ces champs et les confronte a l'execution.
+# Preuve 1 (rejouee) : lance seul, le test passe sur le jar seul et echoue avec le module
+#   make test-amont-jar SORTIE=ctla AMONT_ARGS="--focus <test>" ; make test-amont-module SORTIE=ctla AMONT_ARGS="--focus <test>"
+# Preuve 2 (rejouee) : `expression` figure litteralement dans le source du test au tag ; compilee sur le jar seul elle rend une
+#   anomalie dont le message contient `message-jar` ; module charge, elle compile (clojure -M:test -e "(blaze.fhir-path/compile …)").
+# Preuve 3 (rejouee) : la construction est couverte par un cas de attendus.edn (critere « Valeurs justes ») et un test nomme du module.
+
+test: blaze.db.impl.search-param.composite-test/create-test
+expression: expr-211649
+message-jar: No matching clause: -
+construction: -
+cas: :moins/nominal
+test-module: blaze.addon.sql-on-fhir.fhir-path.operator-test/valeurs-justes-test

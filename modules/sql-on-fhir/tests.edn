@@ -1,0 +1,13 @@
+#kaocha/v1
+ #merge
+  [{}
+   #profile {:ci {:reporter kaocha.report/documentation
+                  :color? false}
+             :coverage {:plugins [:kaocha.plugin/cloverage]
+                        :cloverage/opts
+                        {:codecov? true
+                         ;; seul le code de ce module se mesure, jamais le jar de Blaze
+                         :ns-regex ["blaze\\.addon\\..*"]
+                         :fail-threshold 95}
+                        :reporter kaocha.report/documentation
+                        :color? false}}]

@@ -1,0 +1,267 @@
+;; Attendus FHIRPath de F-004 / T-006 — ORACLE, ecrit par `testeur`.
+;; L'executant du code (clojure-engineer) ne modifie JAMAIS ce fichier : un ecart
+;; entre ce fichier et le code se resout dans le code, ou s'escalade (jamais ici).
+;;
+;; Lu le 2026-10-09 : chaque :extrait est une citation EXACTE (blancs normalises)
+;; du document cite par :doc, ouvert ce jour. Pas de memoire, pas de Blaze.
+;;
+;; Forme d'un attendu :
+;;   {:collection [{:type "System.X" :valeur v} ...]}  resultat FHIRPath (une collection) ;
+;;                                                      [] = vide ; les temporels s'ecrivent en ISO 8601
+;;   {:anomalie {:categorie :incorrect :message-contient ["..."]}}  erreur signalee a l'appelant
+;;   {:relation ...}  opaque par la specification : seule la relation est attendue
+;; :entree = cle de :sondes ; :constantes = constantes de la vue (ViewDefinition.constant) ;
+;; :contexte = etat fourni par le calcul de vue (hors ressource).
+;; :niveau-source = :texte (la section dit le resultat) | :derive (resultat deduit
+;; de la section, ecart signale) — les :derive sont listes dans le compte rendu T-006.
+{:sources
+ {:fp-n1        {:titre "FHIRPath N1 (page intitulee « Normative Release (v2.0.0) »)" :url "https://hl7.org/fhirpath/N1/"}
+  :fp-ci        {:titre "FHIRPath v3.0.0-ballot (join, lowBoundary, highBoundary : pas dans N1)" :url "https://hl7.org/fhirpath/2025Jan/"}
+  :sof-vd       {:titre "SQL on FHIR 2.1.0-pre, page ViewDefinition (generee le 2026-05-21)" :url "https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/StructureDefinition-ViewDefinition.html"}
+  :sof-vd-json  {:titre "SQL on FHIR 2.1.0-pre, StructureDefinition ViewDefinition (JSON)" :url "https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/StructureDefinition-ViewDefinition.json"}
+  :fhir-r4      {:titre "FHIR R4, FHIRPath" :url "https://hl7.org/fhir/R4/fhirpath.html"}
+  :fhir-r4-dt   {:titre "FHIR R4, types de donnees" :url "https://hl7.org/fhir/R4/datatypes.html"}}
+
+ :sondes
+ {:pat-complet {:resourceType "Patient" :id "pt1" :active true :birthDate "2014"
+                :name [{:family "Doe" :given ["Ann" "Marie"]}]}
+  :pat-vide    {:resourceType "Patient" :id "pt2"}
+  :obs-patient {:resourceType "Observation" :id "obs1" :status "final"
+                :code {:text "sonde"} :subject {:reference "Patient/pt1"}}
+  :obs-groupe  {:resourceType "Observation" :id "obs2" :status "final"
+                :code {:text "sonde"} :subject {:reference "Group/g1"}}}
+
+ ;; ---------------------------------------------------------------- 19 expressions x 2
+ :cas
+ [{:id :empty/nominal :expression "name.empty()" :entree :pat-complet
+   :attendu {:collection [{:type "System.Boolean" :valeur false}]}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "5.1.1 empty()" :extrait "Returns true if the input collection is empty ({ }) and false otherwise."}}
+  {:id :empty/vide :expression "name.empty()" :entree :pat-vide
+   :attendu {:collection [{:type "System.Boolean" :valeur true}]}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "5.1.1 empty()" :extrait "Returns true if the input collection is empty ({ }) and false otherwise."}}
+
+  {:id :not/nominal :expression "active.not()" :entree :pat-complet
+   :attendu {:collection [{:type "System.Boolean" :valeur false}]}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.5.3 not()" :extrait "Returns true if the input collection evaluates to false, and false if it evaluates to true. Otherwise, the result is empty ({ })"}}
+  {:id :not/vide :expression "active.not()" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.5.3 not()" :extrait "Returns true if the input collection evaluates to false, and false if it evaluates to true. Otherwise, the result is empty ({ })"}}
+
+  {:id :join/nominal :expression "name.given.join(' ')" :entree :pat-complet
+   :attendu {:collection [{:type "System.String" :valeur "Ann Marie"}]}
+   :niveau-source :texte
+   :source {:doc :fp-ci :section "join([separator: String]) : String" :extrait "('A' | 'B' | 'C').join(',') // 'A,B,C'"}}
+  {:id :join/vide :expression "name.given.join(' ')" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-ci :section "join([separator: String]) : String" :extrait "If the input is empty, the result is empty."}}
+
+  ;; La specification dit que la cle est OPAQUE : seule la relation avec getReferenceKey est attendue.
+  {:id :getResourceKey/nominal :expression "getResourceKey()" :entree :pat-complet
+   :attendu {:relation {:collection-non-vide-a-un-element-primitif true
+                        :egal-a {:expression "subject.getReferenceKey(Patient)" :entree :obs-patient}}}
+   :niveau-source :texte
+   :source {:doc :sof-vd :section "getResourceKey() : KeyType" :extrait "The value returned must be equal to the getResourceKey value returned on the resource itself."}}
+  ;; La section ne dit rien d'un getResourceKey vide : le second cas est la cle PRIMAIRE (deux ressources, deux cles).
+  {:id :getResourceKey/distinct :expression "getResourceKey()" :entree :pat-complet
+   :attendu {:relation {:different-de {:expression "getResourceKey()" :entree :pat-vide}}}
+   :niveau-source :derive
+   :source {:doc :sof-vd :section "getResourceKey() : KeyType" :extrait "returns an opaque value to be used as the primary key for the row associated with the resource."}}
+
+  {:id :getReferenceKey/nominal :expression "subject.getReferenceKey(Patient)" :entree :obs-patient
+   :attendu {:relation {:collection-non-vide-a-un-element-primitif true
+                        :egal-a {:expression "getResourceKey()" :entree :pat-complet}}}
+   :niveau-source :texte
+   :source {:doc :sof-vd :section "getReferenceKey([resource: type specifier]) : KeyType" :extrait "Observation.subject.getReferenceKey(Patient) would return a row key if the subject is a Patient"}}
+  {:id :getReferenceKey/vide :expression "subject.getReferenceKey(Patient)" :entree :obs-groupe
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :sof-vd :section "getReferenceKey([resource: type specifier]) : KeyType" :extrait "or the empty collection ( i.e., {}) if it is not."}}
+
+  ;; Precision 6 explicite sur 2014, decision architect (ecart E1) : conservee ; la forme sans argument doit seulement compiler
+  ;; (source du critere F-004 en cours de precision par functional-analyst : attendus inchanges d'ici sa reponse).
+  {:id :lowBoundary/nominal :expression "birthDate.lowBoundary(6)" :entree :pat-complet
+   :attendu {:collection [{:type "System.Date" :valeur "2014-01"}]}
+   :niveau-source :texte
+   :source {:doc :fp-ci :section "lowBoundary([precision: Integer])" :extrait "@2014.lowBoundary(6) // @2014-01"}}
+  {:id :lowBoundary/vide :expression "birthDate.lowBoundary(6)" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-ci :section "lowBoundary([precision: Integer])" :extrait "If the input collection is empty, the result is empty."}}
+
+  {:id :highBoundary/nominal :expression "birthDate.highBoundary(6)" :entree :pat-complet
+   :attendu {:collection [{:type "System.Date" :valeur "2014-12"}]}
+   :niveau-source :texte
+   :source {:doc :fp-ci :section "highBoundary([precision: Integer])" :extrait "@2014.highBoundary(6) // @2014-12"}}
+  {:id :highBoundary/vide :expression "birthDate.highBoundary(6)" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-ci :section "highBoundary([precision: Integer])" :extrait "If the input collection is empty, the result is empty."}}
+
+  ;; `active` vaut true sur :pat-complet, est absent sur :pat-vide (cas qui echoue au depart du critere).
+  {:id :or/nominal :expression "active or false" :entree :pat-complet
+   :attendu {:collection [{:type "System.Boolean" :valeur true}]}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.5.2 or" :extrait "Returns false if both operands evaluate to false, true if either operand evaluates to true, and empty ({ }) otherwise"}}
+  {:id :or/vide :expression "active or false" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.5.2 or" :extrait "Returns false if both operands evaluate to false, true if either operand evaluates to true, and empty ({ }) otherwise"}}
+
+  {:id :inf/nominal :expression "1 < 2" :entree :pat-vide
+   :attendu {:collection [{:type "System.Boolean" :valeur true}]}
+   :niveau-source :derive
+   :source {:doc :fp-n1 :section "6.2.2 < (Less Than)" :extrait "The less than operator (<) returns true if the first operand is strictly less than the second."}}
+  {:id :inf/vide :expression "multipleBirthInteger < 2" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.2 Comparison" :extrait "If one or both of the arguments is an empty collection, a comparison operator will return an empty collection."}}
+
+  {:id :infeg/nominal :expression "1 <= 1" :entree :pat-vide
+   :attendu {:collection [{:type "System.Boolean" :valeur true}]}
+   :niveau-source :derive
+   :source {:doc :fp-n1 :section "6.2.3 <= (Less or Equal)" :extrait "@T10:30:00 <= @T10:30:00.0 // true"}}
+  {:id :infeg/vide :expression "multipleBirthInteger <= 2" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.2 Comparison" :extrait "If one or both of the arguments is an empty collection, a comparison operator will return an empty collection."}}
+
+  {:id :sup/nominal :expression "2 > 1" :entree :pat-vide
+   :attendu {:collection [{:type "System.Boolean" :valeur true}]}
+   :niveau-source :derive
+   :source {:doc :fp-n1 :section "6.2.1 > (Greater Than)" :extrait "10 > 5 // true"}}
+  {:id :sup/vide :expression "multipleBirthInteger > 2" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.2 Comparison" :extrait "If one or both of the arguments is an empty collection, a comparison operator will return an empty collection."}}
+
+  ;; Les exemples de 6.2.4 de N1 sont faux (« 10 >= 5 // false ») : l'attendu vient de la definition, pas de l'exemple (ecart E2).
+  {:id :supeg/nominal :expression "2 >= 2" :entree :pat-vide
+   :attendu {:collection [{:type "System.Boolean" :valeur true}]}
+   :niveau-source :derive
+   :source {:doc :fp-n1 :section "6.2.4 >= (Greater or Equal)" :extrait "@T10:30:00 >= @T10:30:00.0 // true"}}
+  {:id :supeg/vide :expression "multipleBirthInteger >= 2" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.2 Comparison" :extrait "If one or both of the arguments is an empty collection, a comparison operator will return an empty collection."}}
+
+  {:id :plus/nominal :expression "1 + 2" :entree :pat-vide
+   :attendu {:collection [{:type "System.Integer" :valeur 3}]}
+   :niveau-source :derive
+   :source {:doc :fp-n1 :section "6.6.3 + (addition)" :extrait "For Integer, Decimal, and quantity, adds the operands."}}
+  {:id :plus/vide :expression "multipleBirthInteger + 2" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.6 Math" :extrait "As with the other operators, the math operators will return an empty collection if one or both of the operands are empty."}}
+
+  {:id :moins/nominal :expression "3 - 1" :entree :pat-vide
+   :attendu {:collection [{:type "System.Integer" :valeur 2}]}
+   :niveau-source :derive
+   :source {:doc :fp-n1 :section "6.6.4 - (subtraction)" :extrait "Subtracts the right operand from the left operand (supported for Integer, Decimal, and Quantity)."}}
+  {:id :moins/vide :expression "multipleBirthInteger - 2" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.6 Math" :extrait "As with the other operators, the math operators will return an empty collection if one or both of the operands are empty."}}
+
+  {:id :fois/nominal :expression "2 * 3" :entree :pat-vide
+   :attendu {:collection [{:type "System.Integer" :valeur 6}]}
+   :niveau-source :derive
+   :source {:doc :fp-n1 :section "6.6.1 * (multiplication)" :extrait "Multiplies both arguments (supported for Integer, Decimal, and Quantity)."}}
+  {:id :fois/vide :expression "multipleBirthInteger * 2" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.6 Math" :extrait "As with the other operators, the math operators will return an empty collection if one or both of the operands are empty."}}
+
+  ;; Le resultat d'une division est TOUJOURS Decimal : 3.0, pas 3.
+  {:id :div/nominal :expression "6 / 2" :entree :pat-vide
+   :attendu {:collection [{:type "System.Decimal" :valeur 3.0M}]}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.6.2 / (division)" :extrait "The result of a division is always Decimal, even if the inputs are both Integer."}}
+  {:id :div/vide :expression "12 / 0" :entree :pat-vide
+   :attendu {:collection []}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "6.6.2 / (division)" :extrait "12 / 0 // empty ({ })"}}
+
+  {:id :this/nominal :expression "name.where($this.family = 'Doe').family" :entree :pat-complet
+   :attendu {:collection [{:type "System.String" :valeur "Doe"}]}
+   :niveau-source :derive
+   :source {:doc :fp-n1 :section "5 Functions (introduction)" :extrait "These expressions may refer to the special $this and $index elements, which represent the item from the input collection currently under evaluation"}}
+  {:id :this/vide :expression "name.where($this.family = 'Roe').family" :entree :pat-complet
+   :attendu {:collection []}
+   :niveau-source :derive
+   :source {:doc :fp-n1 :section "5.2.1 where(criteria : expression)" :extrait "the function will evaluate the expression passed for the parameter with respect to each of the items in the input collection"}}
+
+  {:id :constante/nominal :expression "%seuil" :entree :pat-vide
+   :constantes [{:name "seuil" :cle "valueInteger" :valeur 5}]
+   :attendu {:collection [{:type "System.Integer" :valeur 5}]}
+   :niveau-source :texte
+   :source {:doc :sof-vd :section "ViewDefinition.constant.name" :extrait "Name of constant (referred to in FHIRPath as %[name])"}}
+  ;; Categorie :incorrect = critere « Constante absente » de F-004 ; que l'acces soit une erreur = FHIRPath N1 §9.
+  {:id :constante/absente :expression "%absente" :entree :pat-vide
+   :constantes [{:name "seuil" :cle "valueInteger" :valeur 5}]
+   :attendu {:anomalie {:categorie :incorrect :message-contient ["absente"]}}
+   :niveau-source :texte
+   :source {:doc :fp-n1 :section "9 Environment variables" :extrait "Attempting to access an undefined environment variable will result in an error"}}
+
+  {:id :rowIndex/nominal :expression "%rowIndex" :entree :pat-complet
+   :contexte {}
+   :attendu {:collection [{:type "System.Integer" :valeur 0}]}
+   :niveau-source :texte
+   :source {:doc :sof-vd :section "Environment Variables, %rowIndex" :extrait "At the top level (no iteration context), %rowIndex evaluates to 0."}}
+  ;; Contexte d'iteration : {:row-index n} reste la forme de l'oracle (decision architect, ecart E5) ; T-010 la traduit.
+  {:id :rowIndex/iteration :expression "%rowIndex" :entree :pat-complet
+   :contexte {:row-index 1}
+   :attendu {:collection [{:type "System.Integer" :valeur 1}]}
+   :niveau-source :texte
+   :source {:doc :sof-vd :section "Environment Variables, %rowIndex" :extrait "returns the position of the current element in the collection (starting from 0)."}}]
+
+ ;; ---------------------------------------------------------------- 9 couples de `or`
+ ;; Table de FHIRPath N1 §6.5.2 : lignes = 1er operande, colonnes = 2e. `{}` = vide.
+ :table-or
+ [{:id :or/vrai-vrai   :expression "true or true"   :attendu {:collection [{:type "System.Boolean" :valeur true}]}}
+  {:id :or/vrai-faux   :expression "true or false"  :attendu {:collection [{:type "System.Boolean" :valeur true}]}}
+  {:id :or/vrai-vide   :expression "true or {}"     :attendu {:collection [{:type "System.Boolean" :valeur true}]}}
+  {:id :or/faux-vrai   :expression "false or true"  :attendu {:collection [{:type "System.Boolean" :valeur true}]}}
+  {:id :or/faux-faux   :expression "false or false" :attendu {:collection [{:type "System.Boolean" :valeur false}]}}
+  {:id :or/faux-vide   :expression "false or {}"    :attendu {:collection []}}
+  {:id :or/vide-vrai   :expression "{} or true"     :attendu {:collection [{:type "System.Boolean" :valeur true}]}}
+  {:id :or/vide-faux   :expression "{} or false"    :attendu {:collection []}}
+  {:id :or/vide-vide   :expression "{} or {}"       :attendu {:collection []}}]
+ :table-or-source {:doc :fp-n1 :section "6.5.2 or" :extrait "Returns false if both operands evaluate to false, true if either operand evaluates to true, and empty ({ }) otherwise"}
+
+ ;; ---------------------------------------------------------------- 18 types de constantes
+ ;; ViewDefinition.constant.value[x] de l'IG 2.1.0-pre, hors integer64 (ADR 0005). Expression : %c sur :pat-vide.
+ ;; Types : correspondance FHIR -> FHIRPath de FHIR R4 (§ « Using FHIR types in expressions »).
+ :constantes-typees
+ [{:cle "valueString"       :valeur "abc"                                :type "System.String"   :niveau-source :texte}
+  {:cle "valueUri"          :valeur "http://example.org/x"               :type "System.String"   :niveau-source :texte}
+  {:cle "valueCode"         :valeur "male"                               :type "System.String"   :niveau-source :texte}
+  {:cle "valueOid"          :valeur "urn:oid:1.2.3.4"                    :type "System.String"   :niveau-source :texte}
+  {:cle "valueId"           :valeur "pt1"                                :type "System.String"   :niveau-source :texte}
+  {:cle "valueUuid"         :valeur "urn:uuid:53fefa32-fcbb-4ff8-8a92-55ee120877b7" :type "System.String" :niveau-source :texte}
+  {:cle "valueBase64Binary" :valeur "SGVsbG8="                           :type "System.String"   :niveau-source :texte}
+  ;; canonical et url sont absents du tableau de correspondance de R4 ; ce sont des specialisations de uri (R4 datatypes) -> System.String (ecart E3, decide par architect, non mesure).
+  {:cle "valueCanonical"    :valeur "http://example.org/fhir/ValueSet/vs" :type "System.String"   :niveau-source :derive}
+  {:cle "valueUrl"          :valeur "http://example.org/fhir"            :type "System.String"   :niveau-source :derive}
+  {:cle "valueBoolean"      :valeur true                                 :type "System.Boolean"  :niveau-source :texte}
+  {:cle "valueInteger"      :valeur 5                                    :type "System.Integer"  :niveau-source :texte}
+  {:cle "valuePositiveInt"  :valeur 7                                    :type "System.Integer"  :niveau-source :texte}
+  {:cle "valueUnsignedInt"  :valeur 0                                    :type "System.Integer"  :niveau-source :texte}
+  {:cle "valueDecimal"      :valeur 1.5M                                 :type "System.Decimal"  :niveau-source :texte}
+  ;; date : le tableau de R4 dit System.DateTime ; le litteral FHIRPath N1 d'une date est de type Date (@2015-02-04) et
+  ;; l'IG convertit « le litteral FHIR en litteral FHIRPath » -> System.Date retenu (ecart E3, decide par architect, non mesure).
+  {:cle "valueDate"         :valeur "2020-01-02"                         :type "System.Date"     :niveau-source :derive}
+  {:cle "valueDateTime"     :valeur "2020-01-02T03:04:05Z"               :type "System.DateTime" :niveau-source :texte}
+  {:cle "valueInstant"      :valeur "2020-01-02T03:04:05.678Z"           :type "System.DateTime" :niveau-source :texte}
+  {:cle "valueTime"         :valeur "03:04:05"                           :type "System.Time"     :niveau-source :texte}]
+ :constantes-typees-sources
+ {:mapping {:doc :fhir-r4 :section "Using FHIR types in expressions" :extrait "FHIR.string, FHIR.uri, FHIR.code, FHIR.oid, FHIR.id, FHIR.uuid, FHIR.sid, FHIR.markdown, FHIR.base64Binary"}
+  :entiers {:doc :fhir-r4 :section "Using FHIR types in expressions" :extrait "FHIR.integer, FHIR.unsignedInt, FHIR.positiveInt"}
+  :dates   {:doc :fhir-r4 :section "Using FHIR types in expressions" :extrait "FHIR.date, FHIR.dateTime, FHIR.instant"}
+  :uri-derives {:doc :fhir-r4-dt :section "Data Types, Primitive types" :extrait "Although the url and canonical are specializations of uri, they are never substituted for each other"}
+  :litteral {:doc :sof-vd-json :section "ViewDefinition.constant.value[x]" :extrait "which effectively converts the FHIR literal defined here to a FHIRPath literal used in the path expression."}
+  :litteral-date {:doc :fp-n1 :section "4.1 Literals" :extrait "Date: @2015-02-04 (@ followed by ISO8601 compliant date)"}}}

@@ -1,0 +1,1803 @@
+;; GENERE par generer-overlay.py : ne pas editer. blaze.edn du jar, plus les fonctionnalites
+;; viewdefinition-run et viewdefinition-export. sha256 du blaze.edn amont : 97ec3cc94601562cd14c0b3fe73bf8f59778cba23c8461ca5c5a626544e0fa8f
+
+;;
+;; This file contains the configuration of Blaze components forming a system.
+;;
+;; The two main sections are the :base-config and the :features, were
+;; :base-config contains mandatory components and :features contains optional
+;; components which are enabled based on feature flags.
+;;
+;; Each config entry consists of a component key like :blaze/rest-api and a
+;; component config map. Component keys follow the namespaces the components are
+;; defined in. The corresponding namespaces will be loaded automatically before
+;; the system is initialized. Component config maps can contain normal values
+;; and references to other components. The reader tag #blaze/ref is used to
+;; specify a reference. Keys in references can be component keys itself or super
+;; keys like :blaze.db/index-kv-store which are provided by concrete components.
+;;
+
+{:base-config
+ {;;
+  ;; FHIR RESTful API
+  ;;
+  ;; Provides the FHIR RESTful API which is the public interface of Blaze. The
+  ;; namespace blaze/rest-api can be found in the rest-api module. The rest-api
+  ;; depends on FHIR interactions and operations.
+  ;;
+  :blaze/rest-api
+  {:base-url #blaze/var base-url
+   :node #blaze/ref :blaze.db.main/node
+   :parsing-context #blaze/ref :blaze.fhir.parsing-context/default
+   :writing-context #blaze/ref :blaze.fhir/writing-context
+   :admin-node #blaze/ref :blaze.db.admin/node
+   :search-system-handler #blaze/ref :blaze.interaction/search-system
+   :transaction-handler #blaze/ref :blaze.interaction/transaction
+   :history-system-handler #blaze/ref :blaze.interaction.history/system
+   :capabilities-handler #blaze/ref :blaze.rest-api/capabilities-handler
+   :async-status-handler #blaze/ref :blaze.rest-api/async-status-handler
+   :async-status-cancel-handler #blaze/ref :blaze.rest-api/async-status-cancel-handler
+   :resource-patterns #blaze/ref :blaze.rest-api/resource-patterns
+   :compartments
+   [#:blaze.rest-api.compartment
+     {:code "Patient"
+      :search-handler #blaze/ref :blaze.interaction/search-compartment}]
+   :operations #blaze/ref :blaze.rest-api/operations
+   :enforce-referential-integrity #blaze/cfg ["ENFORCE_REFERENTIAL_INTEGRITY" boolean? true]
+   :job-scheduler #blaze/ref :blaze/job-scheduler
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn
+   :page-id-cipher #blaze/ref :blaze/page-id-cipher}
+
+  ;;
+  ;; Resource patterns
+  ;;
+  ;; Resource patterns offer control over which interactions are enabled for
+  ;; which resource type. The default configuration enables all interactions for
+  ;; all resource types.
+  ;;
+  :blaze.rest-api/resource-patterns
+  {:default
+   {:read
+    #:blaze.rest-api.interaction
+     {:handler #blaze/ref :blaze.interaction/read}
+    :vread
+    #:blaze.rest-api.interaction
+     {:handler #blaze/ref :blaze.interaction/vread}
+    :update
+    #:blaze.rest-api.interaction
+     {:handler #blaze/ref :blaze.interaction/update}
+    :delete
+    #:blaze.rest-api.interaction
+     {:handler #blaze/ref :blaze.interaction/delete}
+    :conditional-delete-type
+    #:blaze.rest-api.interaction
+     {:handler #blaze/ref :blaze.interaction/conditional-delete-type}
+    :history-instance
+    #:blaze.rest-api.interaction
+     {:handler #blaze/ref :blaze.interaction.history/instance}
+    :history-type
+    #:blaze.rest-api.interaction
+     {:handler #blaze/ref :blaze.interaction.history/type}
+    :create
+    #:blaze.rest-api.interaction
+     {:handler #blaze/ref :blaze.interaction/create}
+    :search-type
+    #:blaze.rest-api.interaction
+     {:handler #blaze/ref :blaze.interaction/search-type}}}
+
+  :blaze.rest-api/operations
+  [#:blaze.rest-api.operation
+    {:code "evaluate-measure"
+     :def-uri "http://hl7.org/fhir/OperationDefinition/Measure-evaluate-measure"
+     :resource-types ["Measure"]
+     :type-handler #blaze/ref :blaze.fhir.operation.evaluate-measure/handler
+     :instance-handler #blaze/ref :blaze.fhir.operation.evaluate-measure/handler}
+   #:blaze.rest-api.operation
+    {:code "graphql"
+     :def-uri "http://hl7.org/fhir/OperationDefinition/Resource-graphql"
+     :affects-state false
+     :resource-types ["Resource"]
+     :post-middleware #blaze/ref :blaze.fhir.operation.graphql.middleware/query
+     :response-type :json
+     :system-handler #blaze/ref :blaze.fhir.operation.graphql/handler}
+   #:blaze.rest-api.operation
+    {:code "everything"
+     :def-uri "http://hl7.org/fhir/OperationDefinition/Patient-everything"
+     :affects-state false
+     :resource-types ["Patient"]
+     :instance-handler #blaze/ref :blaze.operation.patient/everything
+     :instance-page-handler #blaze/ref :blaze.operation.patient/everything
+     :documentation "Returns all resources from the patient compartment of one concrete patient including the patient. Has a fix limit of 10,000 resources if paging isn't used. Paging is supported when the _count parameter is used. No other params are supported."}
+   #:blaze.rest-api.operation
+    {:code "totals"
+     :def-uri "https://blaze-server.org/fhir/OperationDefinition/totals"
+     :affects-state false
+     :resource-types ["Resource"]
+     :system-handler #blaze/ref :blaze.fhir.operation/totals
+     :documentation "Retrieves the total counts of resources available by resource type."}
+   #:blaze.rest-api.operation
+    {:code "versions"
+     :def-uri "http://hl7.org/fhir/OperationDefinition/CapabilityStatement-versions"
+     :affects-state false
+     :resource-types ["Resource"]
+     :system-handler #blaze/ref :blaze.fhir.operation/versions
+     :documentation "Returns the list of supported FHIR versions and the default version."}]
+
+  ;;
+  ;; FHIR Interactions
+  ;;
+  ;; FHIR interactions implement most of the RESTful API. There are system, type
+  ;; and instance level interactions. Interactions are referred by the rest-api
+  ;; above. All interactions depend on the database node :blaze.db.main/node
+  ;; which provides read and write access to the actual resources.
+  ;;
+  :blaze.interaction.history/system
+  {:blaze.interaction.search.util/link #blaze/ref :blaze.interaction.search.util/link
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn
+   :page-id-cipher #blaze/ref :blaze/page-id-cipher}
+
+  :blaze.interaction.history/type
+  {:blaze.interaction.search.util/link #blaze/ref :blaze.interaction.search.util/link
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn
+   :page-id-cipher #blaze/ref :blaze/page-id-cipher}
+
+  :blaze.interaction.history/instance
+  {:blaze.interaction.search.util/link #blaze/ref :blaze.interaction.search.util/link
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn
+   :page-id-cipher #blaze/ref :blaze/page-id-cipher}
+
+  :blaze.interaction/create
+  {:node #blaze/ref :blaze.db.main/node
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn}
+
+  :blaze.interaction/delete
+  {:node #blaze/ref :blaze.db.main/node}
+
+  :blaze.interaction/delete-history
+  {:node #blaze/ref :blaze.db.main/node}
+
+  :blaze.interaction/conditional-delete-type
+  {:node #blaze/ref :blaze.db.main/node}
+
+  :blaze.interaction/read {}
+  :blaze.interaction/vread {}
+
+  :blaze.interaction/search-system
+  {:blaze.interaction.search.util/link #blaze/ref :blaze.interaction.search.util/link
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn
+   :page-store #blaze/ref :blaze.page-store/local
+   :page-id-cipher #blaze/ref :blaze/page-id-cipher}
+
+  :blaze.interaction.search-system/search-duration-seconds {}
+
+  :blaze.interaction/search-type
+  {:blaze.interaction.search.util/link #blaze/ref :blaze.interaction.search.util/link
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn
+   :page-store #blaze/ref :blaze.page-store/local
+   :page-id-cipher #blaze/ref :blaze/page-id-cipher
+   :context-path #blaze/cfg ["CONTEXT_PATH" string? "/fhir"]}
+
+  :blaze.interaction.search-type/search-duration-seconds {}
+
+  :blaze.interaction/search-compartment
+  {:blaze.interaction.search.util/link #blaze/ref :blaze.interaction.search.util/link
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn
+   :page-store #blaze/ref :blaze.page-store/local
+   :page-id-cipher #blaze/ref :blaze/page-id-cipher}
+
+  :blaze.interaction/transaction
+  {:node #blaze/ref :blaze.db.main/node
+   :batch-handler #blaze/ref :blaze.rest-api/batch-handler
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn
+   :db-sync-timeout #blaze/cfg ["DB_SYNC_TIMEOUT" pos-int? 10000]}
+
+  :blaze.interaction/update
+  {:node #blaze/ref :blaze.db.main/node}
+
+  :blaze.rest-api/batch-handler
+  {:context-path #blaze/cfg ["CONTEXT_PATH" string? "/fhir"]
+   :structure-definition-repo #blaze/ref :blaze.fhir/structure-definition-repo
+   :capabilities-handler #blaze/ref :blaze.rest-api/capabilities-handler
+   :resource-patterns #blaze/ref :blaze.rest-api/resource-patterns
+   :operations #blaze/ref :blaze.rest-api/operations}
+
+  :blaze.rest-api/capabilities-handler
+  {:version #blaze/ref :blaze/version
+   :release-date #blaze/ref :blaze/release-date
+   :context-path #blaze/cfg ["CONTEXT_PATH" string? "/fhir"]
+   :structure-definition-repo #blaze/ref :blaze.fhir/structure-definition-repo
+   :search-param-registry #blaze/ref :blaze.db/search-param-registry
+   :search-system-handler #blaze/ref :blaze.interaction/search-system
+   :transaction-handler-active? true
+   :history-system-handler #blaze/ref :blaze.interaction.history/system
+   :resource-patterns #blaze/ref :blaze.rest-api/resource-patterns
+   :operations #blaze/ref :blaze.rest-api/operations
+   :enforce-referential-integrity #blaze/cfg ["ENFORCE_REFERENTIAL_INTEGRITY" boolean? true]
+   :allow-multiple-delete #blaze/cfg ["ALLOW_MULTIPLE_DELETE" boolean? false]}
+
+  :blaze.rest-api/async-status-handler
+  {}
+
+  :blaze.rest-api/async-status-cancel-handler
+  {:job-scheduler #blaze/ref :blaze/job-scheduler}
+
+  :blaze.interaction.search.util/link
+  {:fhir/version #blaze/cfg ["FHIR_VERSION" :fhir/version "4.0.1"]}
+
+  ;;
+  ;; CQL Evaluation Engine
+  ;;
+  :blaze.cql/retrieve-total {}
+
+  ;;
+  ;; FHIR Operation Evaluate Measure
+  ;;
+  ;; Special operation which enables Blaze to evaluate Measure resources,
+  ;; producing MeasureReports. The metrics compile-duration-seconds and
+  ;; evaluate-duration-seconds are exported.
+  ;;
+  :blaze.fhir.operation.evaluate-measure/handler
+  {:node #blaze/ref :blaze.db.main/node
+   :terminology-service #blaze/ref :blaze.terminology-service/not-available
+   :executor #blaze/ref :blaze.fhir.operation.evaluate-measure/executor
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn
+   :timeout #blaze/ref :blaze.fhir.operation.evaluate-measure/timeout
+   :report-persistence #blaze/cfg ["FHIR_OPERATION_EVALUATE_MEASURE_REPORT_PERSISTENCE" boolean? true]
+   :context-path #blaze/cfg ["CONTEXT_PATH" string? "/fhir"]}
+
+  :blaze.fhir.operation.evaluate-measure/timeout
+  {:millis #blaze/cfg ["FHIR_OPERATION_EVALUATE_MEASURE_TIMEOUT" nat-int? 3600000]}
+
+  :blaze.fhir.operation.evaluate-measure/executor
+  {:num-threads #blaze/cfg ["FHIR_OPERATION_EVALUATE_MEASURE_THREADS" nat-int? :available-processors]}
+
+  :blaze.fhir.operation.evaluate-measure/compile-duration-seconds {}
+  :blaze.fhir.operation.evaluate-measure/evaluate-duration-seconds {}
+
+  :blaze.terminology-service/not-available {}
+
+  ;;
+  ;; FHIR Operation GraphQL
+  ;;
+  :blaze.fhir.operation.graphql/handler
+  {:node #blaze/ref :blaze.db.main/node
+   :writing-context #blaze/ref :blaze.fhir/writing-context
+   :executor #blaze/ref :blaze.fhir.operation.graphql/executor}
+
+  :blaze.fhir.operation.graphql/executor
+  {:num-threads #blaze/cfg ["FHIR_OPERATION_GRAPHQL_THREADS" pos-int? 4]}
+
+  :blaze.fhir.operation.graphql.middleware/query {}
+
+  ;;
+  ;; FHIR Operation Patient Everything
+  ;;
+  :blaze.operation.patient/everything
+  {:blaze.interaction.search.util/link #blaze/ref :blaze.interaction.search.util/link
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn
+   :page-id-cipher #blaze/ref :blaze/page-id-cipher}
+
+  ;;
+  ;; FHIR Operation Totals
+  ;;
+  :blaze.fhir.operation/totals
+  {:structure-definition-repo #blaze/ref :blaze.fhir/structure-definition-repo}
+
+  ;;
+  ;; FHIR Operation Versions
+  ;;
+  :blaze.fhir.operation/versions {}
+
+  ;;
+  ;; Admin API
+  ;;
+  :blaze/admin-api
+  {:context-path #blaze/cfg ["CONTEXT_PATH" string? "/fhir"]
+   :admin-node #blaze/ref :blaze.db.admin/node
+   :validator #blaze/ref :blaze.admin-api/validator
+   :parsing-context #blaze/ref :blaze.fhir.parsing-context/default
+   :writing-context #blaze/ref :blaze.fhir/writing-context
+   :job-scheduler #blaze/ref :blaze/job-scheduler
+   :db-sync-timeout #blaze/cfg ["DB_SYNC_TIMEOUT" pos-int? 10000]
+   :read-job-handler #blaze/ref :blaze.interaction/read
+   :history-job-handler #blaze/ref :blaze.interaction.history/instance
+   :search-type-job-handler #blaze/ref :blaze.interaction/search-type}
+
+  :blaze.admin-api/validator {}
+
+  ;;
+  ;; Main Database Node
+  ;;
+  ;; The database node offers the implementation of the database which is used
+  ;; by FHIR interactions and operations. The database node depends on:
+  ;;
+  ;;  :tx-log - a central transaction log, were all transactions are submitted
+  ;;            in order to get replicated to all other nodes
+  ;;
+  ;;  :tx-indexer - the local indexer for transactions
+  ;;
+  ;;  :resource-cache - an in-memory cache of decoded resources
+  ;;
+  ;;  :kv-store - the actual key-value store holding all resources and indices
+  ;;
+  ;;  :search-param-registry - a registry of search params used for query
+  ;;                           functionality
+  ;;
+  ;; The resource cache collector exports metrics of the resource cache.
+  ;;
+  [:blaze.db/node :blaze.db.main/node]
+  {:storage #blaze/ref :blaze.db/storage
+   :tx-log #blaze/ref :blaze.db.main/tx-log
+   :tx-cache #blaze/ref :blaze.db.main/tx-cache
+   :resource-cache #blaze/ref :blaze.db/resource-cache
+   :resource-store #blaze/ref :blaze.db/resource-store
+   :kv-store #blaze/ref :blaze.db.main/index-kv-store
+   :resource-indexer #blaze/ref :blaze.db.node.main/resource-indexer
+   :search-param-registry #blaze/ref :blaze.db/search-param-registry
+   :scheduler #blaze/ref :blaze/scheduler
+   :enforce-referential-integrity #blaze/cfg ["ENFORCE_REFERENTIAL_INTEGRITY" boolean? true]
+   :allow-multiple-delete #blaze/cfg ["ALLOW_MULTIPLE_DELETE" boolean? false]
+   :max-in-flight-transactions #blaze/cfg ["DB_MAX_IN_FLIGHT_TRANSACTIONS" pos-int? 1024]}
+
+  ;;
+  ;; Admin Database Node
+  ;;
+  [:blaze.db/node :blaze.db.admin/node]
+  {:storage #blaze/ref :blaze.db/storage
+   :tx-log #blaze/ref :blaze.db.admin/tx-log
+   :tx-cache #blaze/ref :blaze.db.admin/tx-cache
+   :resource-cache #blaze/ref :blaze.db/resource-cache
+   :resource-store #blaze/ref :blaze.db/resource-store
+   :kv-store #blaze/ref :blaze.db.admin/index-kv-store
+   :resource-indexer #blaze/ref :blaze.db.node.admin/resource-indexer
+   :search-param-registry #blaze/ref :blaze.db/search-param-registry
+   :scheduler #blaze/ref :blaze/scheduler}
+
+  :blaze.db.node/duration-seconds {}
+  :blaze.db.node/index-batch-transactions {}
+  :blaze.db.node/publishing-lag-collector {:nodes #blaze/ref-map :blaze.db/node}
+  :blaze.db.node/submit-rejections-total {}
+  :blaze.db.node/transaction-sizes {}
+
+  ;;
+  ;; Main Resource Indexer
+  ;;
+  [:blaze.db.node/resource-indexer :blaze.db.node.main/resource-indexer]
+  {:kv-store #blaze/ref :blaze.db.main/index-kv-store
+   :resource-store #blaze/ref :blaze.db/resource-store
+   :search-param-registry #blaze/ref :blaze.db/search-param-registry
+   :executor #blaze/ref :blaze.db.node.resource-indexer.main/executor}
+
+  [:blaze.db.node.resource-indexer/executor :blaze.db.node.resource-indexer.main/executor]
+  {:num-threads #blaze/cfg ["DB_RESOURCE_INDEXER_THREADS" pos-int? 4]}
+
+  ;;
+  ;; Admin Resource Indexer
+  ;;
+  [:blaze.db.node/resource-indexer :blaze.db.node.admin/resource-indexer]
+  {:kv-store #blaze/ref :blaze.db.admin/index-kv-store
+   :resource-store #blaze/ref :blaze.db/resource-store
+   :search-param-registry #blaze/ref :blaze.db/search-param-registry
+   :executor #blaze/ref :blaze.db.node.resource-indexer.admin/executor}
+
+  [:blaze.db.node.resource-indexer/executor :blaze.db.node.resource-indexer.admin/executor]
+  {:num-threads 2}
+
+  :blaze.db.node.resource-indexer/duration-seconds {}
+  :blaze.db.node.resource-indexer/index-entries {}
+
+  :blaze.db.node.tx-indexer/duration-seconds {}
+
+  :blaze/cache-collector
+  {:caches
+   {"tx-cache" #blaze/ref :blaze.db.main/tx-cache
+    "resource-cache" #blaze/ref :blaze.db/resource-cache}}
+
+  ;;
+  ;; Main Transaction Cache
+  ;;
+  ;; The transaction cache holds transaction data that currently only consists
+  ;; of the instant at which the transaction happened. Transaction data is keyed
+  ;; by t.
+  ;;
+  [:blaze.db/tx-cache :blaze.db.main/tx-cache]
+  {:kv-store #blaze/ref :blaze.db.main/index-kv-store
+   :max-size #blaze/cfg ["DB_TRANSACTION_CACHE_SIZE" nat-int? 100000]}
+
+  ;;
+  ;; Admin Transaction Cache
+  ;;
+  ;; The transaction cache holds transaction data that currently only consists
+  ;; of the instant at which the transaction happened. Transaction data is keyed
+  ;; by t.
+  ;;
+  [:blaze.db/tx-cache :blaze.db.admin/tx-cache]
+  {:kv-store #blaze/ref :blaze.db.admin/index-kv-store}
+
+  ;;
+  ;; Resource Cache
+  ;;
+  ;; The resource cache holds already decoded FHIR resources keyed by their
+  ;; content hashes. It speeds up access to resources which are stored in the
+  ;; key-value store in encoded format.
+  ;;
+  ;; The env var DB_RESOURCE_CACHE_SIZE_RATIO can be used to specify the maximum
+  ;; ratio of JVM heap size that is allocated to the resource cache. Please
+  ;; choose a ratio depending on your use case while monitoring JVM heap size.
+  ;;
+  :blaze.db/resource-cache
+  {:resource-store #blaze/ref :blaze.db/resource-store
+   :max-size-ratio #blaze/cfg ["DB_RESOURCE_CACHE_SIZE_RATIO" double? 0.25]}
+
+  ;;
+  ;; Search Param Registry
+  ;;
+  ;; The search param registry contains a set of FHIR search parameter
+  ;; definitions which are used for query functionality in the database node.
+  ;; Currently, this implementation holds a fix set of search parameters defined
+  ;; in FHIR R4.
+  ;;
+  :blaze.db/search-param-registry
+  {:structure-definition-repo #blaze/ref :blaze.fhir/structure-definition-repo
+   :terminology-service #blaze/ref :blaze.terminology-service/not-available
+   :extra-bundle-file #blaze/cfg ["DB_SEARCH_PARAM_BUNDLE" string?]}
+
+  ;;
+  ;; Job Scheduler
+  ;;
+  :blaze/job-scheduler
+  {:node #blaze/ref :blaze.db.admin/node
+   :handlers #blaze/ref-map :blaze.job/handler
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn}
+
+  :blaze.job/async-interaction
+  {:main-node #blaze/ref :blaze.db.main/node
+   :admin-node #blaze/ref :blaze.db.admin/node
+   :batch-handler #blaze/ref :blaze.rest-api/batch-handler
+   :db-sync-timeout #blaze/cfg ["DB_SYNC_TIMEOUT" pos-int? 10000]
+   :blaze/base-url #blaze/var base-url
+   :context-path #blaze/cfg ["CONTEXT_PATH" string? "/fhir"]
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn}
+
+  :blaze.job/compact
+  {:index-db #blaze/ref :blaze.db.main/index-kv-store
+   :admin-node #blaze/ref :blaze.db.admin/node
+   :clock #blaze/ref :blaze/clock}
+
+  ;; The storage profiles with local RocksDB databases add their database
+  ;; directories under :dirs.
+  :blaze.job/disk-perf
+  {:dirs {}
+   :admin-node #blaze/ref :blaze.db.admin/node
+   :executor #blaze/ref :blaze.job.disk-perf/executor
+   :block-size #blaze/var db-block-size
+   :clock #blaze/ref :blaze/clock}
+
+  :blaze.job.disk-perf/executor {}
+
+  :blaze.job/re-index
+  {:main-node #blaze/ref :blaze.db.main/node
+   :admin-node #blaze/ref :blaze.db.admin/node
+   :clock #blaze/ref :blaze/clock
+   :extra-bundle-file #blaze/cfg ["DB_SEARCH_PARAM_BUNDLE" string?]}
+
+  :blaze/scheduler {}
+
+  :blaze/jvm-metrics-logger
+  {:scheduler #blaze/ref :blaze/scheduler
+   :interval #blaze/cfg ["JVM_METRICS_LOGGER_INTERVAL" java-time.api/duration? "PT5M"]
+   :warn-factor #blaze/var jvm-metrics-logger-warn-factor
+   :warn-threshold #blaze/var jvm-metrics-logger-warn-threshold}
+
+  :blaze/clock {}
+
+  :blaze/rng-fn {}
+
+  :blaze/page-id-cipher
+  {:node #blaze/ref :blaze.db.admin/node
+   :scheduler #blaze/ref :blaze/scheduler
+   :clock #blaze/ref :blaze/clock
+   :rng-fn #blaze/ref :blaze/rng-fn}
+
+  [:blaze.fhir/parsing-context :blaze.fhir.parsing-context/default]
+  {:structure-definition-repo #blaze/ref :blaze.fhir/structure-definition-repo}
+
+  [:blaze.fhir/parsing-context :blaze.fhir.parsing-context/resource-store]
+  {:structure-definition-repo #blaze/ref :blaze.fhir/structure-definition-repo
+   :fail-on-unknown-property false
+   :include-summary-only true
+   :use-regex false}
+
+  :blaze.fhir/writing-context
+  {:structure-definition-repo #blaze/ref :blaze.fhir/structure-definition-repo}
+
+  :blaze.fhir/structure-definition-repo {}}
+
+ :storage
+ {:in-memory
+  {;;
+   ;; Main In-Memory, Volatile Index Store
+   ;;
+   ;; In-memory, volatile key-value store implementation for demonstration
+   ;; purposes in case no local directory is available.
+   ;;
+   [:blaze.db.kv/mem :blaze.db.main/index-kv-store]
+   {:column-families
+    {:search-param-value-index nil
+     :resource-value-index nil
+     :compartment-search-param-value-index nil
+     :compartment-resource-type-index nil
+     :active-search-params nil
+     :tx-success-index {:reverse-comparator? true}
+     :tx-error-index nil
+     :t-by-instant-index {:reverse-comparator? true}
+     :resource-as-of-index nil
+     :type-as-of-index nil
+     :system-as-of-index nil
+     :patient-last-change-index nil
+     :type-stats-index nil
+     :system-stats-index nil
+     :cql-bloom-filter nil
+     :cql-bloom-filter-by-t nil}}
+
+   ;;
+   ;; Admin In-Memory, Volatile Index Store
+   ;;
+   ;; In-memory, volatile key-value store implementation for demonstration
+   ;; purposes in case no local directory is available.
+   ;;
+   [:blaze.db.kv/mem :blaze.db.admin/index-kv-store]
+   {:column-families
+    {:search-param-value-index nil
+     :resource-value-index nil
+     :compartment-search-param-value-index nil
+     :compartment-resource-type-index nil
+     :active-search-params nil
+     :tx-success-index {:reverse-comparator? true}
+     :tx-error-index nil
+     :t-by-instant-index {:reverse-comparator? true}
+     :resource-as-of-index nil
+     :type-as-of-index nil
+     :system-as-of-index nil
+     :patient-last-change-index nil
+     :type-stats-index nil
+     :system-stats-index nil
+     :cql-bloom-filter nil
+     :cql-bloom-filter-by-t nil}}
+
+   ;;
+   ;; Main Local Transaction Log for Single Node Deployments
+   ;;
+   ;; The local transaction log uses a key-value store to persist transactions.
+   ;;
+   [:blaze.db.tx-log/local :blaze.db.main/tx-log]
+   {:kv-store #blaze/ref :blaze.db.main/transaction-kv-store
+    :clock #blaze/ref :blaze/clock}
+
+   ;;
+   ;; Admin Local Transaction Log for Single Node Deployments
+   ;;
+   ;; The local transaction log uses a key-value store to persist transactions.
+   ;;
+   [:blaze.db.tx-log/local :blaze.db.admin/tx-log]
+   {:kv-store #blaze/ref :blaze.db.admin/transaction-kv-store
+    :clock #blaze/ref :blaze/clock}
+
+   :blaze.db.tx-log.local/buffer-collector
+   {:tx-logs #blaze/ref-map :blaze.db.tx-log/local}
+   :blaze.db.tx-log.local/duration-seconds {}
+   :blaze.db.tx-log.local/store-batch-entries {}
+
+   ;;
+   ;; Main In-Memory, Volatile Transaction Store
+   ;;
+   ;; In-memory, volatile key-value store implementation for demonstration
+   ;; purposes in case no local directory is available.
+   ;;
+   [:blaze.db.kv/mem :blaze.db.main/transaction-kv-store]
+   {:column-families {}}
+
+   ;;
+   ;; Admin In-Memory, Volatile Transaction Store
+   ;;
+   ;; In-memory, volatile key-value store implementation for demonstration
+   ;; purposes in case no local directory is available.
+   ;;
+   [:blaze.db.kv/mem :blaze.db.admin/transaction-kv-store]
+   {:column-families {}}
+
+   ;;
+   ;; Key-Value Resource Store
+   ;;
+   ;; Can be referred by the super key :blaze.db/resource-store.
+   ;;
+   :blaze.db.resource-store/kv
+   {:kv-store #blaze/ref :blaze.db/resource-kv-store
+    :parsing-context #blaze/ref :blaze.fhir.parsing-context/resource-store
+    :writing-context #blaze/ref :blaze.fhir/writing-context
+    :executor #blaze/ref :blaze.db.resource-store.kv/executor}
+
+   :blaze.db.resource-store.kv/executor
+   {:num-threads #blaze/cfg ["DB_RESOURCE_STORE_KV_THREADS" pos-int? 4]}
+
+   :blaze.db.resource-store.kv/resource-bytes {}
+   :blaze.db.resource-store.kv/duration-seconds {}
+
+   ;;
+   ;; In-Memory, Volatile Key-Value Store Resource Store Backend
+   ;;
+   ;; In-memory, volatile key-value store implementation for demonstration
+   ;; purposes in case no local directory is available. Can be referred by the
+   ;; super key :blaze.db/resource-kv-store.
+   ;;
+   [:blaze.db.kv/mem :blaze.db/resource-kv-store]
+   {:column-families {}}
+
+   ;;
+   ;; Admin API
+   ;;
+   ;; Definition of the RocksDB Databases as empty map because we have none in
+   ;; the in-memory storage variant.
+   ;;
+   :blaze/admin-api
+   {:dbs {}}
+
+   :blaze.job/compact
+   {:transaction-db #blaze/ref :blaze.db.main/transaction-kv-store
+    :resource-db #blaze/ref :blaze.db/resource-kv-store}
+
+   ;;
+   ;; Local Page Store
+   ;;
+   :blaze.page-store/local
+   {:expire-duration #blaze/cfg ["PAGE_STORE_EXPIRE" java-time.api/duration? "PT1H"]}
+
+   :blaze.page-store.local/collector
+   {:page-store #blaze/ref :blaze.page-store/local}}
+
+  :standalone
+  {;;
+   ;; Main RocksDB Index Store
+   ;;
+   [:blaze.db.kv/rocksdb :blaze.db.main/index-kv-store]
+   {:dir #blaze/cfg ["INDEX_DB_DIR" string? "index"]
+    :block-cache #blaze/ref :blaze.db.kv.rocksdb/block-cache
+    :stats #blaze/ref :blaze.db.index-kv-store.main/stats
+    :opts
+    {:wal-dir #blaze/cfg ["INDEX_DB_WAL_DIR" string? ""]
+     :max-background-jobs #blaze/cfg ["DB_MAX_BACKGROUND_JOBS" int? 4]
+     :max-subcompactions #blaze/cfg ["DB_MAX_SUBCOMPACTIONS" int? 1]
+     :compaction-readahead-size #blaze/cfg ["DB_COMPACTION_READAHEAD_SIZE" nat-int?]}
+    :scale-factor #blaze/var db-scale-factor
+    :column-families
+    {:search-param-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :resource-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :compartment-search-param-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :compartment-resource-type-index
+     {:write-buffer-size-in-mb 4
+      :max-bytes-for-level-base-in-mb 16
+      :target-file-size-base-in-mb 4
+      :block-size #blaze/var db-block-size}
+
+     :active-search-params
+     {:block-size #blaze/var db-block-size}
+
+     :tx-success-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}
+
+     :tx-error-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :t-by-instant-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}
+
+     :resource-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :type-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :system-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :patient-last-change-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :type-stats-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :system-stats-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :cql-bloom-filter
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :enable-blob-files? true
+      :min-blob-size 512}
+
+     :cql-bloom-filter-by-t
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}}}
+
+   [:blaze.db.kv.rocksdb/stats :blaze.db.index-kv-store.main/stats] {}
+
+   ;;
+   ;; Admin RocksDB Index Store
+   ;;
+   [:blaze.db.kv/rocksdb :blaze.db.admin/index-kv-store]
+   {:dir #blaze/cfg ["ADMIN_INDEX_DB_DIR" string? "admin-index"]
+    :column-families
+    {:search-param-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :resource-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :compartment-search-param-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :compartment-resource-type-index
+     {:write-buffer-size-in-mb 4
+      :max-bytes-for-level-base-in-mb 16
+      :target-file-size-base-in-mb 4
+      :block-size #blaze/var db-block-size}
+
+     :active-search-params
+     {:block-size #blaze/var db-block-size}
+
+     :tx-success-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}
+
+     :tx-error-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :t-by-instant-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}
+
+     :resource-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :type-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :system-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :patient-last-change-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :type-stats-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :system-stats-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :cql-bloom-filter
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :enable-blob-files? true
+      :min-blob-size 512}
+
+     :cql-bloom-filter-by-t
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}}}
+
+   ;;
+   ;; Main Local Transaction Log for Single Node Deployments
+   ;;
+   ;; The local transaction log uses a key-value store to persist transactions.
+   ;;
+   [:blaze.db.tx-log/local :blaze.db.main/tx-log]
+   {:kv-store #blaze/ref :blaze.db.main/transaction-kv-store
+    :clock #blaze/ref :blaze/clock}
+
+   ;;
+   ;; Admin Local Transaction Log for Single Node Deployments
+   ;;
+   ;; The local transaction log uses a key-value store to persist transactions.
+   ;;
+   [:blaze.db.tx-log/local :blaze.db.admin/tx-log]
+   {:kv-store #blaze/ref :blaze.db.admin/transaction-kv-store
+    :clock #blaze/ref :blaze/clock}
+
+   :blaze.db.tx-log.local/buffer-collector
+   {:tx-logs #blaze/ref-map :blaze.db.tx-log/local}
+   :blaze.db.tx-log.local/duration-seconds {}
+   :blaze.db.tx-log.local/store-batch-entries {}
+
+   ;;
+   ;; Main RocksDB Transaction Store
+   ;;
+   [:blaze.db.kv/rocksdb :blaze.db.main/transaction-kv-store]
+   {:dir #blaze/cfg ["TRANSACTION_DB_DIR" string? "transaction"]
+    :block-cache #blaze/ref :blaze.db.kv.rocksdb/block-cache
+    :stats #blaze/ref :blaze.db.transaction-kv-store.main/stats
+    :opts
+    {:sync? true
+     :wal-dir #blaze/cfg ["TRANSACTION_DB_WAL_DIR" string? ""]
+     :max-background-jobs #blaze/cfg ["DB_MAX_BACKGROUND_JOBS" int? 4]
+     :max-subcompactions #blaze/cfg ["DB_MAX_SUBCOMPACTIONS" int? 1]
+     :compaction-readahead-size #blaze/cfg ["DB_COMPACTION_READAHEAD_SIZE" nat-int?]}
+    :scale-factor #blaze/var db-scale-factor
+    :column-families
+    {:default
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}}}
+
+   [:blaze.db.kv.rocksdb/stats :blaze.db.transaction-kv-store.main/stats] {}
+
+   ;;
+   ;; Admin RocksDB Transaction Store
+   ;;
+   [:blaze.db.kv/rocksdb :blaze.db.admin/transaction-kv-store]
+   {:dir #blaze/cfg ["ADMIN_TRANSACTION_DB_DIR" string? "admin-transaction"]
+    :opts
+    {:sync? true}
+    :column-families
+    {:default
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}}}
+
+   ;;
+   ;; Key-Value Resource Store
+   ;;
+   ;; Can be referred by the super key :blaze.db/resource-store.
+   ;;
+   :blaze.db.resource-store/kv
+   {:kv-store #blaze/ref :blaze.db/resource-kv-store
+    :parsing-context #blaze/ref :blaze.fhir.parsing-context/resource-store
+    :writing-context #blaze/ref :blaze.fhir/writing-context
+    :executor #blaze/ref :blaze.db.resource-store.kv/executor}
+
+   :blaze.db.resource-store.kv/executor
+   {:num-threads #blaze/cfg ["DB_RESOURCE_STORE_KV_THREADS" pos-int? 4]}
+
+   :blaze.db.resource-store.kv/resource-bytes {}
+   :blaze.db.resource-store.kv/duration-seconds {}
+
+   ;;
+   ;; RocksDB Key-Value Store Resource Store Backend
+   ;;
+   [:blaze.db.kv/rocksdb :blaze.db/resource-kv-store]
+   {:dir #blaze/cfg ["RESOURCE_DB_DIR" string? "resource"]
+    :stats #blaze/ref :blaze.db.resource-kv-store/stats
+    :opts
+    {:sync? true
+     :wal-dir #blaze/cfg ["RESOURCE_DB_WAL_DIR" string? ""]
+     :max-background-jobs #blaze/cfg ["DB_MAX_BACKGROUND_JOBS" int? 4]
+     :max-subcompactions #blaze/cfg ["DB_MAX_SUBCOMPACTIONS" int? 1]
+     :compaction-readahead-size #blaze/cfg ["DB_COMPACTION_READAHEAD_SIZE" nat-int?]}
+    :scale-factor #blaze/var db-scale-factor
+    :column-families
+    {:default
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      ;; According to Synthea test data, a resource has an average size of
+      ;; 1300 bytes. So a block with a size of 16 kb will hold about 10
+      ;; resources in average.
+      :block-size #blaze/var db-block-size
+      :bloom-filter? true
+      :memtable-whole-key-filtering? true
+      ;; every get() in the resource store should be a hit
+      :optimize-filters-for-hits? true}}}
+
+   [:blaze.db.kv.rocksdb/stats :blaze.db.resource-kv-store/stats] {}
+
+   :blaze.db.kv.rocksdb/block-cache
+   {:size-in-mb #blaze/cfg ["DB_BLOCK_CACHE_SIZE" int? 128]}
+
+   :blaze.db.kv.rocksdb/env {}
+
+   :blaze.db.kv.rocksdb/stats-collector
+   {:stats
+    {"index" #blaze/ref :blaze.db.index-kv-store.main/stats
+     "transaction" #blaze/ref :blaze.db.transaction-kv-store.main/stats
+     "resource" #blaze/ref :blaze.db.resource-kv-store/stats}}
+
+   :blaze.db.kv.rocksdb/block-cache-collector
+   {:block-cache #blaze/ref :blaze.db.kv.rocksdb/block-cache}
+
+   :blaze.db.kv.rocksdb/table-reader-collector
+   {:stores
+    {"index" #blaze/ref :blaze.db.main/index-kv-store
+     "transaction" #blaze/ref :blaze.db.main/transaction-kv-store
+     "resource" #blaze/ref :blaze.db/resource-kv-store}}
+
+   ;;
+   ;; Admin API
+   ;;
+   ;; Definition of the RocksDB Databases
+   ;;
+   :blaze/admin-api
+   {:dbs
+    {"index" #blaze/ref :blaze.db.main/index-kv-store
+     "transaction" #blaze/ref :blaze.db.main/transaction-kv-store
+     "resource" #blaze/ref :blaze.db/resource-kv-store}}
+
+   :blaze.job/compact
+   {:transaction-db #blaze/ref :blaze.db.main/transaction-kv-store
+    :resource-db #blaze/ref :blaze.db/resource-kv-store}
+
+   :blaze.job/disk-perf
+   {:dirs
+    {"index" #blaze/cfg ["INDEX_DB_DIR" string? "index"]
+     "transaction" #blaze/cfg ["TRANSACTION_DB_DIR" string? "transaction"]
+     "resource" #blaze/cfg ["RESOURCE_DB_DIR" string? "resource"]}}
+
+   ;;
+   ;; Local Page Store
+   ;;
+   :blaze.page-store/local
+   {:expire-duration #blaze/cfg ["PAGE_STORE_EXPIRE" java-time.api/duration? "PT1H"]}
+
+   :blaze.page-store.local/collector
+   {:page-store #blaze/ref :blaze.page-store/local}}
+
+  :distributed
+  {;;
+   ;; Main RocksDB Index Store
+   ;;
+   [:blaze.db.kv/rocksdb :blaze.db.main/index-kv-store]
+   {:dir #blaze/cfg ["INDEX_DB_DIR" string? "index"]
+    :block-cache #blaze/ref :blaze.db.kv.rocksdb/block-cache
+    :stats #blaze/ref :blaze.db.index-kv-store.main/stats
+    :opts
+    {:wal-dir #blaze/cfg ["INDEX_DB_WAL_DIR" string? ""]
+     :max-background-jobs #blaze/cfg ["DB_MAX_BACKGROUND_JOBS" int? 4]
+     :max-subcompactions #blaze/cfg ["DB_MAX_SUBCOMPACTIONS" int? 1]
+     :compaction-readahead-size #blaze/cfg ["DB_COMPACTION_READAHEAD_SIZE" nat-int?]}
+    :scale-factor #blaze/var db-scale-factor
+    :column-families
+    {:search-param-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :resource-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :compartment-search-param-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :compartment-resource-type-index
+     {:write-buffer-size-in-mb 4
+      :max-bytes-for-level-base-in-mb 16
+      :target-file-size-base-in-mb 4
+      :block-size #blaze/var db-block-size}
+
+     :active-search-params
+     {:block-size #blaze/var db-block-size}
+
+     :tx-success-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}
+
+     :tx-error-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :t-by-instant-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}
+
+     :resource-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :type-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :system-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :patient-last-change-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :type-stats-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :system-stats-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :cql-bloom-filter
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :enable-blob-files? true
+      :min-blob-size 512}
+
+     :cql-bloom-filter-by-t
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}}}
+
+   [:blaze.db.kv.rocksdb/stats :blaze.db.index-kv-store.main/stats] {}
+
+   ;;
+   ;; Admin RocksDB Index Store
+   ;;
+   [:blaze.db.kv/rocksdb :blaze.db.admin/index-kv-store]
+   {:dir #blaze/cfg ["ADMIN_INDEX_DB_DIR" string? "admin-index"]
+    :column-families
+    {:search-param-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :resource-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :compartment-search-param-value-index
+     {:write-buffer-size-in-mb 64
+      :max-bytes-for-level-base-in-mb 256
+      :target-file-size-base-in-mb 64
+      :block-size #blaze/var db-block-size}
+
+     :compartment-resource-type-index
+     {:write-buffer-size-in-mb 4
+      :max-bytes-for-level-base-in-mb 16
+      :target-file-size-base-in-mb 4
+      :block-size #blaze/var db-block-size}
+
+     :active-search-params
+     {:block-size #blaze/var db-block-size}
+
+     :tx-success-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}
+
+     :tx-error-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :t-by-instant-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}
+
+     :resource-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :type-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :system-as-of-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :patient-last-change-index
+     {:write-buffer-size-in-mb 8
+      :max-bytes-for-level-base-in-mb 32
+      :target-file-size-base-in-mb 8
+      :block-size #blaze/var db-block-size}
+
+     :type-stats-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :system-stats-index
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size}
+
+     :cql-bloom-filter
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :enable-blob-files? true
+      :min-blob-size 512}
+
+     :cql-bloom-filter-by-t
+     {:write-buffer-size-in-mb 2
+      :max-bytes-for-level-base-in-mb 8
+      :target-file-size-base-in-mb 2
+      :block-size #blaze/var db-block-size
+      :reverse-comparator? true}}}
+
+   :blaze.db.kv.rocksdb/block-cache
+   {:size-in-mb #blaze/cfg ["DB_BLOCK_CACHE_SIZE" int? 128]}
+
+   :blaze.db.kv.rocksdb/env {}
+
+   :blaze.db.kv.rocksdb/stats-collector
+   {:stats
+    {"index" #blaze/ref :blaze.db.index-kv-store.main/stats}}
+
+   :blaze.db.kv.rocksdb/block-cache-collector
+   {:block-cache #blaze/ref :blaze.db.kv.rocksdb/block-cache}
+
+   :blaze.db.kv.rocksdb/table-reader-collector
+   {:stores
+    {"index" #blaze/ref :blaze.db.main/index-kv-store}}
+
+   ;;
+   ;; Admin API
+   ;;
+   ;; Definition of the RocksDB Databases
+   ;;
+   :blaze/admin-api
+   {:dbs
+    {"index" #blaze/ref :blaze.db.main/index-kv-store}}
+
+   ;; Only the index database is a local RocksDB database in the distributed
+   ;; storage profile.
+   :blaze.job/disk-perf
+   {:dirs
+    {"index" #blaze/cfg ["INDEX_DB_DIR" string? "index"]}}
+
+   ;;
+   ;; Main Kafka Transaction Log
+   ;;
+   [:blaze.db.tx-log/kafka :blaze.db.main/tx-log]
+   {:bootstrap-servers #blaze/cfg ["DB_KAFKA_BOOTSTRAP_SERVERS" string? "localhost:9092"]
+    :topic "blaze-tx-main"
+    :last-t-executor #blaze/ref :blaze.db.tx-log.kafka/last-t-executor
+    :max-request-size #blaze/cfg ["DB_KAFKA_MAX_REQUEST_SIZE" nat-int? 1048576]
+    :compression-type #blaze/cfg ["DB_KAFKA_COMPRESSION_TYPE" string? "snappy"]
+    :security-protocol #blaze/cfg ["DB_KAFKA_SECURITY_PROTOCOL" string? "PLAINTEXT"]
+    :ssl-truststore-location #blaze/cfg ["DB_KAFKA_SSL_TRUSTSTORE_LOCATION" string?]
+    :ssl-truststore-password #blaze/cfg ["DB_KAFKA_SSL_TRUSTSTORE_PASSWORD" string?]
+    :ssl-keystore-location #blaze/cfg ["DB_KAFKA_SSL_KEYSTORE_LOCATION" string?]
+    :ssl-keystore-password #blaze/cfg ["DB_KAFKA_SSL_KEYSTORE_PASSWORD" string?]
+    :ssl-key-password #blaze/cfg ["DB_KAFKA_SSL_KEY_PASSWORD" string?]}
+
+   ;;
+   ;; Admin Kafka Transaction Log
+   ;;
+   [:blaze.db.tx-log/kafka :blaze.db.admin/tx-log]
+   {:bootstrap-servers #blaze/cfg ["DB_KAFKA_BOOTSTRAP_SERVERS" string? "localhost:9092"]
+    :topic "blaze-tx-admin"
+    :last-t-executor #blaze/ref :blaze.db.tx-log.kafka/last-t-executor
+    :max-request-size #blaze/cfg ["DB_KAFKA_MAX_REQUEST_SIZE" nat-int? 1048576]
+    :compression-type #blaze/cfg ["DB_KAFKA_COMPRESSION_TYPE" string? "snappy"]
+    :security-protocol #blaze/cfg ["DB_KAFKA_SECURITY_PROTOCOL" string? "PLAINTEXT"]
+    :ssl-truststore-location #blaze/cfg ["DB_KAFKA_SSL_TRUSTSTORE_LOCATION" string?]
+    :ssl-truststore-password #blaze/cfg ["DB_KAFKA_SSL_TRUSTSTORE_PASSWORD" string?]
+    :ssl-keystore-location #blaze/cfg ["DB_KAFKA_SSL_KEYSTORE_LOCATION" string?]
+    :ssl-keystore-password #blaze/cfg ["DB_KAFKA_SSL_KEYSTORE_PASSWORD" string?]
+    :ssl-key-password #blaze/cfg ["DB_KAFKA_SSL_KEY_PASSWORD" string?]}
+
+   :blaze.db.tx-log.kafka/last-t-executor {}
+   :blaze.db.tx-log.kafka/duration-seconds {}
+
+   ;;
+   ;; Cassandra Resource Store
+   ;;
+   ;; Can be referred by the super key :blaze.db/resource-store.
+   ;;
+   :blaze.db.resource-store/cassandra
+   {:parsing-context #blaze/ref :blaze.fhir.parsing-context/resource-store
+    :writing-context #blaze/ref :blaze.fhir/writing-context
+    :contact-points #blaze/cfg ["DB_CASSANDRA_CONTACT_POINTS" string? "localhost:9042"]
+    :username #blaze/cfg ["DB_CASSANDRA_USERNAME" string? "cassandra"]
+    :password #blaze/cfg ["DB_CASSANDRA_PASSWORD" string? "cassandra"]
+    :key-space #blaze/cfg ["DB_CASSANDRA_KEY_SPACE" string? "blaze"]
+    :put-consistency-level #blaze/cfg ["DB_CASSANDRA_PUT_CONSISTENCY_LEVEL" string? "TWO"]
+    :max-concurrent-requests #blaze/cfg ["DB_CASSANDRA_MAX_CONCURRENT_REQUESTS" nat-int? 1024]
+    :max-request-queue-size #blaze/cfg ["DB_CASSANDRA_MAX_REQUEST_QUEUE_SIZE" nat-int? 100000]
+    :request-timeout #blaze/cfg ["DB_CASSANDRA_REQUEST_TIMEOUT" pos-int? 2000]}
+
+   :blaze.db.resource-store.cassandra/duration-seconds {}
+
+   :blaze.db.resource-store.cassandra/resource-bytes {}
+
+   ;;
+   ;; Cassandra Page Store
+   ;;
+   ;; Used as the distributed backing store for the local page store cache.
+   ;;
+   :blaze.page-store/cassandra
+   {:contact-points #blaze/cfg ["DB_CASSANDRA_CONTACT_POINTS" string? "localhost:9042"]
+    :username #blaze/cfg ["DB_CASSANDRA_USERNAME" string? "cassandra"]
+    :password #blaze/cfg ["DB_CASSANDRA_PASSWORD" string? "cassandra"]
+    :key-space #blaze/cfg ["DB_CASSANDRA_KEY_SPACE" string? "blaze"]
+    :put-consistency-level #blaze/cfg ["DB_CASSANDRA_PUT_CONSISTENCY_LEVEL" string? "TWO"]
+    :max-concurrent-requests #blaze/cfg ["DB_CASSANDRA_MAX_CONCURRENT_REQUESTS" nat-int? 1024]
+    :max-request-queue-size #blaze/cfg ["DB_CASSANDRA_MAX_REQUEST_QUEUE_SIZE" nat-int? 100000]
+    :request-timeout #blaze/cfg ["DB_CASSANDRA_REQUEST_TIMEOUT" pos-int? 2000]}
+
+   :blaze.page-store.cassandra/duration-seconds {}
+
+   :blaze.page-store.cassandra/resource-bytes {}
+
+   ;;
+   ;; Local Page Store with Cassandra Backing Store
+   ;;
+   ;; Acts as a write-through cache in front of Cassandra, reducing load on
+   ;; Cassandra for repeated token lookups within the same node.
+   ;;
+   :blaze.page-store/local
+   {:expire-duration #blaze/cfg ["PAGE_STORE_EXPIRE" java-time.api/duration? "PT1H"]
+    :backing-store #blaze/ref :blaze.page-store/cassandra}
+
+   :blaze.page-store.local/collector
+   {:page-store #blaze/ref :blaze.page-store/local}}}
+
+ :features
+ [;;
+
+  ;;
+  ;; $viewdefinition-run (F-006, IB-08, IB-12). Allumee par defaut ;
+  ;; DISABLE_VIEWDEFINITION_RUN=true l'eteint (interrupteur inverse).
+  ;;
+  {:key :viewdefinition-run
+   :name "ViewDefinition run"
+   :toggle "DISABLE_VIEWDEFINITION_RUN"
+   :inverse? true
+   :config
+   {:blaze.rest-api/operations
+    [#:blaze.rest-api.operation
+      {:code "viewdefinition-run"
+       :def-uri "http://sql-on-fhir.org/OperationDefinition/$viewdefinition-run"
+       :affects-state false
+       :resource-types ["Resource"]
+       :post-middleware #blaze/ref :blaze.addon.sql-on-fhir.operation.run/raw-body
+       :system-handler #blaze/ref :blaze.addon.sql-on-fhir.operation.run/handler
+       :documentation "Runs a SQL on FHIR ViewDefinition against the data of this server and returns its rows. The only supported `viewReference` format is the canonical (`url` or `url|version`) of a Library stored on this server that holds the view; it is looked up locally and never downloaded."}]
+
+    :blaze.addon.sql-on-fhir.operation.run/raw-body {}
+
+    :blaze.addon.sql-on-fhir.operation.run/handler
+    {:max-rows #blaze/cfg ["VIEWDEFINITION_RUN_MAX_ROWS" pos-int? 10000]}
+
+    :blaze.addon.sql-on-fhir.operation.sortie/app
+    {:app #blaze/ref :blaze.handler/app}
+
+    :blaze/server
+    {:handler #blaze/ref :blaze.addon.sql-on-fhir.operation.sortie/app}}}
+
+  ;;
+  ;; $viewdefinition-export (F-007, IB-08, IB-11, IB-13). Allumee par defaut ;
+  ;; DISABLE_VIEWDEFINITION_EXPORT=true l'eteint (interrupteur inverse). Allumee, elle exige
+  ;; VIEWDEFINITION_EXPORT_DIR (chemin absolu), ..._MAX_BYTES, ..._RETENTION_SECONDS et
+  ;; ..._CLEANUP_PERIOD_SECONDS (entiers >= 1), sans valeur par defaut : absente ou mal formee,
+  ;; le demarrage est refuse (les specs sont verifiees par m/pre-init-spec de chaque composant).
+  ;;
+  {:key :viewdefinition-export
+   :name "ViewDefinition export"
+   :toggle "DISABLE_VIEWDEFINITION_EXPORT"
+   :inverse? true
+   :config
+   {:blaze.rest-api/operations
+    [#:blaze.rest-api.operation
+      {:code "viewdefinition-export"
+       :def-uri "http://sql-on-fhir.org/OperationDefinition/$viewdefinition-export"
+       :affects-state false
+       :resource-types ["Resource"]
+       :post-middleware #blaze/ref :blaze.addon.sql-on-fhir.operation.run/raw-body
+       :system-handler #blaze/ref :blaze.addon.sql-on-fhir.operation.export/handler
+       :documentation "Starts the export of SQL on FHIR ViewDefinitions to one file per view, run in the background. The only supported `viewReference` format is the canonical (`url` or `url|version`) of a Library stored on this server that holds the view; it is looked up locally and never downloaded."}]
+
+    :blaze.addon.sql-on-fhir.operation.run/raw-body {}
+
+    :blaze.addon.sql-on-fhir.operation.export/handler
+    {:base-url #blaze/var base-url
+     :context-path #blaze/cfg ["CONTEXT_PATH" string? "/fhir"]
+     :clock #blaze/ref :blaze/clock}
+
+    :blaze.job/viewdefinition-export
+    {:main-node #blaze/ref :blaze.db.main/node
+     :admin-node #blaze/ref :blaze.db.admin/node
+     :db-sync-timeout #blaze/cfg ["DB_SYNC_TIMEOUT" pos-int? 10000]
+     :dir #blaze/cfg ["VIEWDEFINITION_EXPORT_DIR" string?]
+     :max-bytes #blaze/cfg ["VIEWDEFINITION_EXPORT_MAX_BYTES" pos-int?]
+     :executor #blaze/ref :blaze.addon.sql-on-fhir.export.job/executor}
+
+    :blaze.addon.sql-on-fhir.export.job/executor {}
+
+    :blaze.addon.sql-on-fhir.export.routes/handler
+    {:admin-node #blaze/ref :blaze.db.admin/node
+     :job-scheduler #blaze/ref :blaze/job-scheduler
+     :dir #blaze/cfg ["VIEWDEFINITION_EXPORT_DIR" string?]
+     :writing-context #blaze/ref :blaze.fhir/writing-context
+     :base-url #blaze/var base-url
+     :context-path #blaze/cfg ["CONTEXT_PATH" string? "/fhir"]}
+
+    :blaze.addon.sql-on-fhir.export.lifecycle/manager
+    {:job-scheduler #blaze/ref :blaze/job-scheduler
+     :admin-node #blaze/ref :blaze.db.admin/node
+     :dir #blaze/cfg ["VIEWDEFINITION_EXPORT_DIR" string?]
+     :retention-seconds #blaze/cfg ["VIEWDEFINITION_EXPORT_RETENTION_SECONDS" pos-int?]
+     :period-seconds #blaze/cfg ["VIEWDEFINITION_EXPORT_CLEANUP_PERIOD_SECONDS" pos-int?]
+     :scheduler #blaze/ref :blaze/scheduler
+     :clock #blaze/ref :blaze/clock}
+
+    :blaze.addon.sql-on-fhir.operation.sortie/app
+    {:app #blaze/ref :blaze.handler/app
+     :export-routes #blaze/ref :blaze.addon.sql-on-fhir.export.routes/handler}
+
+    :blaze/server
+    {:handler #blaze/ref :blaze.addon.sql-on-fhir.operation.sortie/app}}}
+
+  ;; Admin API
+  ;;
+  {:key :admin-api
+   :name "Admin API"
+   :toggle "ENABLE_ADMIN_API"
+   :config
+   {:blaze/rest-api
+    {:admin-handler #blaze/ref :blaze/admin-api}
+
+    :blaze.fhir.operation/compact
+    {:clock #blaze/ref :blaze/clock
+     :context-path #blaze/cfg ["CONTEXT_PATH" string? "/fhir"]}
+
+    :blaze.fhir.operation/disk-perf
+    {:clock #blaze/ref :blaze/clock
+     :context-path #blaze/cfg ["CONTEXT_PATH" string? "/fhir"]}
+
+    :blaze.rest-api/operations
+    [#:blaze.rest-api.operation
+      {:code "compact"
+       :def-uri "https://blaze-server.org/fhir/OperationDefinition/compact"
+       :affects-state true
+       :system-handler #blaze/ref :blaze.fhir.operation/compact
+       :documentation "This operation is used to compact a certain column family of a certain database. It will be always async."}
+     #:blaze.rest-api.operation
+      {:code "disk-perf"
+       :def-uri "https://blaze-server.org/fhir/OperationDefinition/disk-perf"
+       :affects-state true
+       :system-handler #blaze/ref :blaze.fhir.operation/disk-perf
+       :documentation "This operation measures the disk performance of the volume of one of the database directories with an I/O profile similar to the one Blaze's RocksDB stores produce. It will be always async."}]
+
+    :blaze/java-tool-options #blaze/cfg ["JAVA_TOOL_OPTIONS" string? ""]}}
+
+  ;;
+  ;; OpenID Authentication
+  ;;
+  ;; Can be referred by the super key :blaze.auth/backend. Will be enabled if an
+  ;; OPENID_PROVIDER_URL is set.
+  ;;
+  {:key :open-id-authentication
+   :name "OpenID Authentication"
+   :toggle "OPENID_PROVIDER_URL"
+   :config
+   {:blaze.openid-auth/backend
+    {:http-client #blaze/ref :blaze.openid-auth/http-client
+     :scheduler #blaze/ref :blaze/scheduler
+     :provider-url #blaze/cfg ["OPENID_PROVIDER_URL" string?]
+     :issuer #blaze/cfg ["OPENID_PROVIDER_ISSUER" string?]
+     :audience #blaze/cfg ["OPENID_AUDIENCE" string?]}
+
+    [:blaze/http-client :blaze.openid-auth/http-client]
+    {:trust-store #blaze/cfg ["OPENID_CLIENT_TRUST_STORE" string?]
+     :trust-store-pass #blaze/cfg ["OPENID_CLIENT_TRUST_STORE_PASS" string?]}}}
+
+  {:key :cql-expression-cache
+   :name "CQL Expression Cache"
+   :toggle "CQL_EXPR_CACHE_SIZE"
+   :config
+   {:blaze.fhir.operation.evaluate-measure/handler
+    {:blaze.elm.expression/cache #blaze/ref :blaze.elm.expression/cache}
+
+    :blaze.elm.expression/cache
+    {:node #blaze/ref :blaze.db.main/node
+     :max-size-in-mb #blaze/cfg ["CQL_EXPR_CACHE_SIZE" nat-int?]
+     :refresh #blaze/cfg ["CQL_EXPR_CACHE_REFRESH" java-time.api/duration? "PT24H"]
+     :executor #blaze/ref :blaze.elm.expression.cache/executor}
+
+    :blaze.elm.expression.cache/executor
+    {:num-threads #blaze/cfg ["CQL_EXPR_CACHE_THREADS" pos-int? 4]}
+
+    :blaze.elm.expression.cache/bloom-filter-creation-duration-seconds {}
+    :blaze.elm.expression.cache/bloom-filter-useful-total {}
+    :blaze.elm.expression.cache/bloom-filter-not-useful-total {}
+    :blaze.elm.expression.cache/bloom-filter-false-positive-total {}
+    :blaze.elm.expression.cache/bloom-filter-bytes {}
+
+    :blaze/cache-collector
+    {:caches
+     {"cql-expr-cache" #blaze/ref :blaze.elm.expression/cache}}
+
+    :blaze/admin-api
+    {:blaze.elm.expression/cache #blaze/ref :blaze.elm.expression/cache}}}
+
+  {:key :delete-history
+   :name "Interaction delete-history"
+   :toggle "ENABLE_INTERACTION_DELETE_HISTORY"
+   :config
+   {:blaze.rest-api/resource-patterns
+    {:default
+     {:delete-history
+      #:blaze.rest-api.interaction
+       {:handler #blaze/ref :blaze.interaction/delete-history}}}
+
+    :blaze.interaction/delete-history
+    {:node #blaze/ref :blaze.db.main/node}}}
+
+  {:key :patient-purge
+   :name "Operation $purge on Patient"
+   :toggle "ENABLE_OPERATION_PATIENT_PURGE"
+   :config
+   {:blaze.rest-api/operations
+    [#:blaze.rest-api.operation
+      {:code "purge"
+       :def-uri "http://hl7.org/fhir/OperationDefinition/Patient-purge"
+       :affects-state true
+       :resource-types ["Patient"]
+       :instance-handler #blaze/ref :blaze.operation.patient/purge
+       :documentation "This operation is used to request the removal of all current and historical versions for all resources in a patient compartment or from a Group of patient compartments. The return is an OperationOutcome with results and/or details about execution."}]
+
+    :blaze.operation.patient/purge
+    {:node #blaze/ref :blaze.db.main/node}}}
+
+  {:key :terminology-service
+   :name "Terminology Service"
+   :toggle "ENABLE_TERMINOLOGY_SERVICE"
+   :config
+   {:blaze.rest-api/operations
+    [#:blaze.rest-api.operation
+      {:code "expand"
+       :def-uri "http://hl7.org/fhir/OperationDefinition/ValueSet-expand"
+       :affects-state false
+       :resource-types ["ValueSet"]
+       :type-handler #blaze/ref :blaze.fhir.operation.value-set/expand
+       :instance-handler #blaze/ref :blaze.fhir.operation.value-set/expand
+       :documentation "The $expand operation can be used to expand all codes of a ValueSet."}
+     #:blaze.rest-api.operation
+      {:code "lookup"
+       :def-uri "http://hl7.org/fhir/OperationDefinition/CodeSystem-lookup"
+       :affects-state false
+       :resource-types ["CodeSystem"]
+       :type-handler #blaze/ref :blaze.fhir.operation.code-system/lookup
+       :instance-handler #blaze/ref :blaze.fhir.operation.code-system/lookup
+       :documentation "Lookup a coded value in its code system."}
+     #:blaze.rest-api.operation
+      {:code "validate-code"
+       :def-uri "http://hl7.org/fhir/OperationDefinition/CodeSystem-validate-code"
+       :affects-state false
+       :resource-types ["CodeSystem"]
+       :type-handler #blaze/ref :blaze.fhir.operation.code-system/validate-code
+       :instance-handler #blaze/ref :blaze.fhir.operation.code-system/validate-code
+       :documentation "Validate that a coded value is in the code system."}
+     #:blaze.rest-api.operation
+      {:code "validate-code"
+       :def-uri "http://hl7.org/fhir/OperationDefinition/ValueSet-validate-code"
+       :affects-state false
+       :resource-types ["ValueSet"]
+       :type-handler #blaze/ref :blaze.fhir.operation.value-set/validate-code
+       :instance-handler #blaze/ref :blaze.fhir.operation.value-set/validate-code
+       :documentation "Validate that a coded value is in the set of codes allowed by a value set."}]
+
+    :blaze.fhir.operation.code-system/lookup
+    {:terminology-service #blaze/ref :blaze.terminology-service/local}
+
+    :blaze.fhir.operation.code-system/validate-code
+    {:terminology-service #blaze/ref :blaze.terminology-service/local}
+
+    :blaze.fhir.operation.value-set/expand
+    {:terminology-service #blaze/ref :blaze.terminology-service/local}
+
+    :blaze.fhir.operation.value-set/validate-code
+    {:terminology-service #blaze/ref :blaze.terminology-service/local}
+
+    :blaze.fhir.operation.evaluate-measure/handler
+    {:terminology-service #blaze/ref :blaze.terminology-service/local}
+
+    :blaze.terminology-service/local
+    {:clock #blaze/ref :blaze/clock
+     :rng-fn #blaze/ref :blaze/rng-fn
+     :graph-cache #blaze/ref :blaze.terminology-service.local/graph-cache
+     :enable-bcp-13 true
+     :enable-bcp-47 true
+     :enable-ucum true}
+
+    :blaze.terminology-service.local/graph-cache
+    {:num-concepts #blaze/cfg ["TERMINOLOGY_SERVICE_GRAPH_CACHE_SIZE" nat-int? 100000]}
+
+    :blaze/cache-collector
+    {:caches
+     {"terminology-service-graph-cache" #blaze/ref :blaze.terminology-service.local/graph-cache}}
+
+    :blaze.rest-api/capabilities-handler
+    {:terminology-service #blaze/ref :blaze.terminology-service/local}
+
+    :blaze.db/search-param-registry
+    {:terminology-service #blaze/ref :blaze.terminology-service/local}}}
+
+  {:key :terminology-loinc
+   :name "LOINC Terminology"
+   :toggle "ENABLE_TERMINOLOGY_LOINC"
+   :config
+   {:blaze.terminology-service/local
+    {:loinc #blaze/ref :blaze.terminology-service.local.code-system/loinc}
+
+    :blaze.terminology-service.local.code-system/loinc {}}}
+
+  {:key :terminology-sct
+   :name "SNOMED CT Terminology"
+   :toggle "ENABLE_TERMINOLOGY_SNOMED_CT"
+   :config
+   {:blaze.terminology-service/local
+    {:sct #blaze/ref :blaze.terminology-service.local.code-system/sct}
+
+    :blaze.terminology-service.local.code-system/sct
+    {:release-path #blaze/cfg ["SNOMED_CT_RELEASE_PATH" blaze.path/dir?]}}}
+
+  {:key :extern-terminology-service
+   :name "Extern Terminology Service"
+   :toggle "EXTERN_TERMINOLOGY_SERVICE_URL"
+   :config
+   {:blaze.terminology-service/extern
+    {:base-uri #blaze/cfg ["EXTERN_TERMINOLOGY_SERVICE_URL" string?]
+     :http-client #blaze/ref :blaze.terminology-service.extern/http-client
+     :parsing-context #blaze/ref :blaze.fhir.parsing-context/default
+     :writing-context #blaze/ref :blaze.fhir/writing-context}
+
+    [:blaze/http-client :blaze.terminology-service.extern/http-client]
+    {:trust-store #blaze/cfg ["EXTERN_TERMINOLOGY_SERVICE_CLIENT_TRUST_STORE" string?]
+     :trust-store-pass #blaze/cfg ["EXTERN_TERMINOLOGY_SERVICE_CLIENT_TRUST_STORE_PASS" string?]}
+
+    :blaze.fhir.operation.evaluate-measure/handler
+    {:terminology-service #blaze/ref :blaze.terminology-service/extern}
+
+    :blaze.db/search-param-registry
+    {:terminology-service #blaze/ref :blaze.terminology-service/extern}}}
+
+  ;; OpenID Authentication for the Extern Terminology Service
+  ;;
+  ;; Will be enabled if EXTERN_TERMINOLOGY_SERVICE_OPENID_PROVIDER_URL is set.
+  ;;
+  {:key :extern-terminology-service-openid
+   :name "Extern Terminology Service OpenID Authentication"
+   :toggle "EXTERN_TERMINOLOGY_SERVICE_OPENID_PROVIDER_URL"
+   :config
+   {:blaze.terminology-service/extern
+    {:token-provider #blaze/ref :blaze.openid-client/token-provider}
+
+    [:blaze/http-client :blaze.extern-terminology-service/openid-http-client]
+    {:trust-store #blaze/cfg ["EXTERN_TERMINOLOGY_SERVICE_OPENID_CLIENT_TRUST_STORE" string?]
+     :trust-store-pass #blaze/cfg ["EXTERN_TERMINOLOGY_SERVICE_OPENID_CLIENT_TRUST_STORE_PASS" string?]}
+
+    :blaze.openid-client/token-provider
+    {:http-client #blaze/ref [:blaze/http-client :blaze.extern-terminology-service/openid-http-client]
+     :scheduler #blaze/ref :blaze/scheduler
+     :provider-url #blaze/cfg ["EXTERN_TERMINOLOGY_SERVICE_OPENID_PROVIDER_URL" string?]
+     :client-id #blaze/cfg ["EXTERN_TERMINOLOGY_SERVICE_OPENID_CLIENT_ID" string?]
+     :client-secret #blaze/cfg ["EXTERN_TERMINOLOGY_SERVICE_OPENID_CLIENT_SECRET" string?]}}}
+
+  ;; External Validator
+  ;;
+  ;; Will be enabled if EXTERN_VALIDATOR_URL is set. Forwards incoming resources
+  ;; to an external FHIR validator before persistence. Depending on
+  ;; VALIDATOR_FAILURE_MODE invalid resources are tagged or rejected.
+  ;;
+  {:key :extern-validator
+   :name "Extern Validator"
+   :toggle "EXTERN_VALIDATOR_URL"
+   :config
+   {:blaze.validator/extern
+    {:base-uri #blaze/cfg ["EXTERN_VALIDATOR_URL" string?]
+     :failure-mode #blaze/var validator-failure-mode
+     :max-concurrency #blaze/cfg ["EXTERN_VALIDATOR_MAX_CONCURRENCY" pos-int? 4]
+     :http-client #blaze/ref :blaze.validator.extern/http-client
+     :parsing-context #blaze/ref :blaze.fhir.parsing-context/default
+     :writing-context #blaze/ref :blaze.fhir/writing-context}
+
+    [:blaze/http-client :blaze.validator.extern/http-client]
+    {:trust-store #blaze/cfg ["EXTERN_VALIDATOR_CLIENT_TRUST_STORE" string?]
+     :trust-store-pass #blaze/cfg ["EXTERN_VALIDATOR_CLIENT_TRUST_STORE_PASS" string?]}
+
+    :blaze.interaction/create
+    {:validator #blaze/ref :blaze.validator/extern}
+
+    :blaze.interaction/update
+    {:validator #blaze/ref :blaze.validator/extern}
+
+    :blaze.interaction/transaction
+    {:validator #blaze/ref :blaze.validator/extern}}}
+
+  {:key :graph
+   :name "Operation $graph on Resource"
+   :toggle "ENABLE_OPERATION_GRAPH"
+   :config
+   {:blaze.rest-api/operations
+    [#:blaze.rest-api.operation
+      {:code "graph"
+       :def-uri "http://hl7.org/fhir/OperationDefinition/Resource-graph"
+       :affects-state false
+       :resource-types ["Patient"]
+       :instance-handler #blaze/ref :blaze.operation/graph
+       :documentation "Return an entire graph of resources based on a GraphDefinition. The operation is invoked on a specific instance of a resource, and the graph definition tells the server what other resources to return in the same package."}]
+
+    :blaze.operation/graph
+    {:compiled-graph-cache #blaze/ref :blaze.operation.graph/compiled-graph-cache
+     :clock #blaze/ref :blaze/clock
+     :rng-fn #blaze/ref :blaze/rng-fn
+     :page-id-cipher #blaze/ref :blaze/page-id-cipher}
+
+    :blaze.operation.graph/compiled-graph-cache {}
+
+    :blaze/cache-collector
+    {:caches
+     {"operation-graph-compiled-graph-cache" #blaze/ref :blaze.operation.graph/compiled-graph-cache}}}}
+
+  {:key :cql
+   :name "Operation $cql"
+   :toggle "ENABLE_OPERATION_CQL"
+   :config
+   {:blaze.rest-api/operations
+    [#:blaze.rest-api.operation
+      {:code "cql"
+       :def-uri "https://hl7.org/fhir/uv/cql/OperationDefinition-cql-cql.html"
+       :affects-state false
+       :resource-types ["Resource"]
+       :system-handler #blaze/ref :blaze.fhir.operation/cql
+       :documentation "The $cql operation evaluates a CQL expression and returns the result."}]
+
+    :blaze.fhir.operation/cql
+    {:node #blaze/ref :blaze.db.main/node
+     :terminology-service #blaze/ref :blaze.terminology-service/not-available
+     :clock #blaze/ref :blaze/clock
+     :rng-fn #blaze/ref :blaze/rng-fn}
+
+    :blaze.fhir.operation.cql/compile-duration-seconds {}
+    :blaze.fhir.operation.cql/evaluate-duration-seconds {}}}]}

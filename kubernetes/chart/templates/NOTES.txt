@@ -1,0 +1,4 @@
+{{ .Chart.Name }} {{ .Chart.Version }} — Blaze {{ .Values.versions.blaze }}, nginx {{ .Values.versions.nginx }}
+
+Namespace : {{ .Values.namespace.name }} (politique restreinte)
+API FHIR  : {{ .Values.blaze.baseUrl }}/fhir

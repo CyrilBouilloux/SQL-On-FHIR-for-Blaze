@@ -1,0 +1,85 @@
+# values.yaml — paramétrage de la livraison Kubernetes.
+#
+# AUCUNE version ici : values-versions.yaml, DÉRIVÉ de versions.env par
+# deriver.sh, les porte. Les deux se passent à helm :
+#
+#   kubernetes/chart/deriver.sh
+#   helm upgrade --install blaze kubernetes/chart -n blaze \
+#     -f kubernetes/chart/values-versions.yaml -f mes-valeurs.yaml
+
+namespace:
+  # Si le namespace existe déjà (helm refuse un namespace qu'il n'a pas créé),
+  # `create: false` ; le chart le déclare sinon, avec la politique restreinte.
+  create: true
+  name: blaze
+
+image:
+  # Image du MODULE (make image, build/Dockerfile : FROM samply/blaze épinglé par
+  # empreinte + /app/addon). `tag` n'a pas de défaut : le chart refuse de se rendre
+  # sans lui (ni `latest`, ni étiquette de développement) : <BLAZE_VERSION>-<12 premiers
+  # hexadécimaux de l'identifiant de l'image>. `registry` (hôte[:port], sans schéma) vide :
+  # image locale, rendue <repository>:<tag>, sans empreinte. Renseigné : `digest`
+  # (sha256:<64 hexadécimaux>) est OBLIGATOIRE et l'image est <registry>/<repository>:<tag>@<digest>.
+  blaze: { registry: "", repository: blaze-platform-module, tag: "", digest: "", pullPolicy: IfNotPresent }
+  # nginxinc/nginx-unprivileged : l'image officielle démarre root et est
+  # bloquée sous la politique restreinte. Étiquette et empreinte : versions.nginx et
+  # versions.nginxDigest, dérivées de versions.env.
+  nginx: { repository: nginxinc/nginx-unprivileged, pullPolicy: IfNotPresent }
+
+securite:
+  runAsUser: ""      # vide : le cluster impose le sien (image Blaze : 1001)
+  fsGroup: 1001
+
+blaze:
+  # URL publique de l'API, SANS /fhir : celle que le client utilise, reportée
+  # dans les liens des Bundles. Exemple local : http://localhost:8088.
+  baseUrl: http://localhost:8088
+  # Tas JVM ; la mémoire limite doit rester au-dessus (cache RocksDB hors tas).
+  xmx: 1g
+  # Variables d'environnement Blaze supplémentaires (docs Blaze, « Configuration »).
+  env: {}
+  # Opération $viewdefinition-run (F-006, module sql-on-fhir). Interrupteur INVERSE,
+  # comme la variable : `actif: false` pose DISABLE_VIEWDEFINITION_RUN=true ; `true`
+  # (défaut) ne pose rien (`false` explicite : blaze.env, `--set blaze.env.DISABLE_VIEWDEFINITION_RUN=false`).
+  # Le plafond est posé en VIEWDEFINITION_RUN_MAX_ROWS.
+  viewdefinitionRun:
+    actif: true
+    plafondLignes: 10000
+  # Opération $viewdefinition-export (F-007, ADR 0008 point 7). Interrupteur INVERSE, comme
+  # ci-dessus : `actif: false` pose DISABLE_VIEWDEFINITION_EXPORT=true ; `true` (défaut) ne
+  # pose rien (`false` explicite : blaze.env). Fichiers sur un PVC SÉPARÉ `<release>-export`
+  # (ReadWriteOnce, conservé à `helm uninstall`), monté sur `dossier`, distinct de `data`.
+  viewdefinitionExport:
+    actif: true
+    dossier: /app/export              # VIEWDEFINITION_EXPORT_DIR (chemin absolu, hors /app/data et /tmp)
+    plafondOctets: 8589934592         # VIEWDEFINITION_EXPORT_MAX_BYTES : 8 Gio, .part compris
+    conservationSecondes: 86400       # ..._RETENTION_SECONDS : 24 h (seuil de l'IG), depuis la fin de la tâche
+    periodeNettoyageSecondes: 300     # ..._CLEANUP_PERIOD_SECONDS
+    stockage:
+      taille: 10Gi
+      classe: ""     # vide : StorageClass par défaut du cluster
+  stockage:
+    taille: 10Gi
+    classe: ""       # vide : StorageClass par défaut du cluster
+
+# Plafond _include / _revinclude, appliqué par nginx/nginx.conf (garde-fou 2).
+# Cette valeur DÉCLARE le plafond en vigueur : scripts/check_gardefou7.py échoue
+# si elle diverge de nginx.conf.
+proxy:
+  plafondInclude: 5
+
+exposition:
+  # ClusterIP | NodePort. NodePort : port publié sur chaque nœud.
+  type: ClusterIP
+  nodePort: 30088
+
+reseau:
+  politiques: true
+
+ressources:
+  blaze:
+    requests: { cpu: "500m", memory: "1536Mi" }
+    limits: { memory: "2Gi" }
+  nginx:
+    requests: { cpu: "50m", memory: "64Mi" }
+    limits: { memory: "256Mi" }

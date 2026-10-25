@@ -1,0 +1,10 @@
+empreinte_du_jeu=d1e07920adfe52a886d5c06fb22c5f2424b5aaa5be48e61d9e46934fdd423108
+  (/usr/bin/find demo/donnees -type f -name '*.json' | LC_ALL=C sort | xargs sha256sum | sha256sum ; commande jouée depuis la racine du dépôt : les chemins en font partie)
+SYNTHEA_VERSION=v4.0.0
+SYNTHEA_JAR_SHA256=ed43c20ad40ba5c3bc724503a5af032715fe3c491620b766148e7c2361e6ecc1
+configuration=demo/synthea.properties
+configuration_sha256=4305572de18e752040e7af4a6294dae2a093b2781027b428d1d1ae92b1f91d49
+population=100
+graine=1
+graine_praticiens=2
+date_de_reference=20250101

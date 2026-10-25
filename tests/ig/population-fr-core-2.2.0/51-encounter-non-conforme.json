@@ -1,0 +1,8 @@
+{
+  "resourceType": "Encounter",
+  "id": "fhir-platform-ig-frcore-220-encounter-non-conforme",
+  "meta": { "profile": ["https://hl7.fr/ig/fhir/core/StructureDefinition/fr-core-encounter|2.2.0"], "tag": [{"system":"http://fhir-platform.local/ig-controle","code":"fhir-platform-ig-frcore-220"}] },
+  "status": "finished",
+  "class": { "code": "IMP" },
+  "subject": { "reference": "Patient/fhir-platform-ig-frcore-220-patient-conforme" }
+}

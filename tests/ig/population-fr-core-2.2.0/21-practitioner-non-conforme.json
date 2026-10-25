@@ -1,0 +1,11 @@
+{
+  "resourceType": "Practitioner",
+  "id": "fhir-platform-ig-frcore-220-practitioner-non-conforme",
+  "meta": { "profile": ["https://hl7.fr/ig/fhir/core/StructureDefinition/fr-core-practitioner|2.2.0"], "tag": [{"system":"http://fhir-platform.local/ig-controle","code":"fhir-platform-ig-frcore-220"}] },
+  "identifier": [ {
+    "system": "urn:oid:1.2.250.1.71.4.2.1",
+    "value": "10000000002"
+  } ],
+  "active": true,
+  "name": [ { "use": "official", "family": "ZZTEST-PRATICIEN-KO", "given": ["Dominique"] } ]
+}

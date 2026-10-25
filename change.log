@@ -1,0 +1,37 @@
+blaze-platform — journal des modifications principales
+Blaze v1.11.0 (image publiée, épinglée par empreinte) · module sql-on-fhir
+
+Ce journal sert de base au message du commit initial du dossier publié.
+
+== Module complémentaire sql-on-fhir (modules/sql-on-fhir/) ==
+- Évaluateur FHIRPath étendu et moteur de vues SQL on FHIR, sans base de données.
+- Opération $viewdefinition-run : exécution d'une ViewDefinition, format de sortie choisi
+  par Accept (liste pondérée acceptée), viewReference par canonique.
+- Opération $viewdefinition-export : export asynchrone (suivi, résultat, fichiers,
+  annulation, rétention et nettoyage configurables par variables VIEWDEFINITION_EXPORT_*).
+- Filtres et transformations de textes dans les vues.
+- Suite de conformité SQL on FHIR et tests de non-régression contre Blaze publié.
+
+== Livraison ==
+- Chart Helm Kubernetes (Blaze standalone, nginx, politique restricted, NetworkPolicy) ;
+  plafond _include/_revinclude au reverse proxy, vérifié par make check.
+- build/Dockerfile : unique FROM l'image Blaze publiée ; le jar du module est posé devant
+  le jar de Blaze. Aucun build ni fork de Blaze.
+- build/construire-jar.sh : jar du module reconstructible depuis le dossier publié.
+- Banc local de contrôle de bout en bout et démonstration docker compose (demo/, hors
+  livraison).
+
+== Contrôles et mesures ==
+- make check : versions, règle « module complémentaire » (M1 à M6), plafond _include.
+- Banc de performance et jeux additionnels de bench ; rapport de performance.
+
+== Documentation ==
+- README (essai avec Docker, recherche SQL on FHIR), docs/architecture.md,
+  docs/configuration.md, docs/manuel.md, docs/construction.md, docs/methode-module.md,
+  docs/couverture.md, docs/impacts-blaze.md, avancement.html.
+- Licence Apache 2.0 (LICENSE).
+
+== Publication ==
+- Dossier constitué par scripts/publier.sh : fichiers suivis hors pilotage interne,
+  détection de données personnelles, 0 lien relatif cassé.
+- Données synthétiques exclusivement.

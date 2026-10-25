@@ -1,0 +1,21 @@
+{
+  "resourceType": "Organization",
+  "id": "fhir-platform-ig-frcore-220-organization-conforme",
+  "meta": { "profile": ["https://hl7.fr/ig/fhir/core/StructureDefinition/fr-core-organization|2.2.0"], "tag": [{"system":"http://fhir-platform.local/ig-controle","code":"fhir-platform-ig-frcore-220"}] },
+  "identifier": [ {
+    "system": "urn:oid:1.2.250.1.71.4.2.2",
+    "value": "990000001"
+  } ],
+  "active": true,
+  "type": [ { "coding": [ {
+    "system": "https://hl7.fr/ig/fhir/core/CodeSystem/fr-core-cs-type-organisation",
+    "code": "LEGAL-ENTITY"
+  } ] } ],
+  "name": "ZZTEST Entite Juridique Synthetique",
+  "telecom": [ { "system": "phone", "value": "0102030405", "use": "work" } ],
+  "address": [ {
+    "use": "work", "type": "both",
+    "line": ["1 rue Synthetique"], "city": "Ville-Test",
+    "postalCode": "75001", "country": "FR"
+  } ]
+}

@@ -1,0 +1,20 @@
+# Preuves 2 de I (F-004 (c)) : extraits des sorties brutes (regenerees le 2026-10-10 par T-026, essais sur le test seul) target/*.out du jar seul (non versionnees, ignorees par git).
+# Un bloc par test de I et par sortie designee. Regeneration depuis un clone neuf : make -C modules/sql-on-fhir test-amont-instables (ecrit target/flaky-jar.out et target/complet-jar.out). Rejouable : /usr/bin/grep -cE '^(FAIL|ERROR) in blaze.db.api-test/transact-create-property-test' <sortie> ; controle : make test-amont-controle SORTIE=<prefixe>.
+
+test: blaze.db.api-test/transact-create-property-test
+sortie: target/flaky-jar.out
+date: 2026-10-10T12:40:23+02:00 (mtime de la sortie ; essai 99 sur N=100)
+commande: make -C modules/sql-on-fhir test-amont-instables (jar seul, AMONT_ARGS="--focus blaze.db.api-test/transact-create-property-test", copie du premier essai en echec)
+synthese: 1 tests, 17 assertions, 1 errors, 0 failures.
+ligne-test:   transact-create-property-test ERROR
+ligne-echec: ERROR in blaze.db.api-test/transact-create-property-test (api_test.clj:290)
+grep-cE: 1
+
+test: blaze.db.api-test/transact-create-property-test
+sortie: target/complet-jar.out
+date: 2026-10-10T12:40:23+02:00 (mtime de la sortie ; copie du premier essai en succes)
+commande: make -C modules/sql-on-fhir test-amont-instables (meme commande ; jar seul, test seul)
+synthese: 1 tests, 17 assertions, 0 failures.
+ligne-test:   transact-create-property-test
+ligne-echec: (absente)
+grep-cE: 0
