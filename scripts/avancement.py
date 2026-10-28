@@ -88,6 +88,7 @@ def codes_de(cellule):
     return out
 
 
+RANG = {TODO: 0, WIP: 1, DONE: 2}
 op_etat = {}  # code -> fait|cours|reste
 for ligne in lire(R / "docs/couverture.md").splitlines():
     cel = [c.strip() for c in ligne.strip().strip("|").split("|")]
@@ -95,13 +96,16 @@ for ligne in lire(R / "docs/couverture.md").splitlines():
         continue
     mot = re.sub(r"[`*]", "", cel[-1]).split(" ")[0]
     etat = {"réalisé": DONE, "en": WIP}.get(mot, TODO)
-    for c in codes_de(cel[1]):
-        op_etat[c] = etat
+    for c in codes_de(cel[1]):  # une ligne de décision (§ 6) ne fait pas reculer une opération déjà réalisée
+        if RANG[etat] > RANG[op_etat.get(c, TODO)]:
+            op_etat[c] = etat
+        else:
+            op_etat.setdefault(c, etat)
 
 composants = []
 for ligne in lire(ARCHI).splitlines():
     cel = [c.strip() for c in ligne.strip().strip("|").split("|")]
-    if ligne.startswith("| ") and len(cel) == 5 and cel[2] in ("Existant", "À étendre", "À développer"):
+    if ligne.startswith("| ") and len(cel) == 5 and cel[2] in ("Existant", "À étendre", "À développer", "Développé"):
         composants.append(dict(couche=cel[0], nom=cel[1].replace("`", ""), doc=cel[2], cle=cel[1]))
 if len(composants) < 19:
     sys.exit(f"ECHEC inventaire : {len(composants)} composants lus, 19 attendus")
