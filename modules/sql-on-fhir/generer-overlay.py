@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Genere resources/blaze.edn : le blaze.edn du jar publie + les fonctionnalites `viewdefinition-run`
-et `viewdefinition-export` (ADR 0003 : l'overlay masque le fichier amont en entier). L'empreinte du fichier amont est en
+"""Genere resources/blaze.edn : le blaze.edn du jar publie + les fonctionnalites `viewdefinition-run`,
+`viewdefinition-export` et `sqlquery-run` (ADR 0003 : l'overlay masque le fichier amont en entier). L'empreinte du fichier amont est en
 tete du fichier genere : `--verifier` rend ECHEC (8) si le jar ou les ajouts ont change.
 Sortie : 0 ok, 3 jar absent (NON-BRANCHE), 8 ECHEC."""
 import difflib, hashlib, pathlib, sys, zipfile
@@ -104,6 +104,42 @@ AJOUT = """
     :blaze/server
     {:handler #blaze/ref :blaze.addon.sql-on-fhir.operation.sortie/app}}}
 
+  ;;
+  ;; $sqlquery-run (F-039, SQ-03, ADR 0014). Allumee par defaut ; DISABLE_SQLQUERY_RUN=true l'eteint
+  ;; (interrupteur inverse). Plafonds (ADR 0014, point 5) : duree, memoire du moteur hors tas,
+  ;; requetes simultanees ; le plafond de lignes est VIEWDEFINITION_RUN_MAX_ROWS, partage avec
+  ;; $viewdefinition-run (L11). Valeurs par defaut : duree, memoire (64 MiB/256 MiB) et concurrence
+  ;; (N=1, N=2) mesurees (T-118, bench/baselines/T-118/) ; la reserve JVM de 384 Mio reste decidee, non mesuree.
+  ;;
+  {:key :sqlquery-run
+   :name "SQL query run"
+   :toggle "DISABLE_SQLQUERY_RUN"
+   :inverse? true
+   :config
+   {:blaze.rest-api/operations
+    [#:blaze.rest-api.operation
+      {:code "sqlquery-run"
+       :def-uri "http://sql-on-fhir.org/OperationDefinition/$sqlquery-run"
+       :affects-state false
+       :resource-types ["Resource"]
+       :post-middleware #blaze/ref :blaze.addon.sql-on-fhir.operation.run/raw-body
+       :system-handler #blaze/ref :blaze.addon.sql-on-fhir.operation.sqlquery/handler
+       :documentation "Runs a SQL on FHIR SQLQuery Library (`queryResource`, or `queryReference` to a Library stored on this server) against the views it depends on, on the current data of this server, and returns the rows. Only a SELECT query is accepted; it runs on an in-memory database without file, network or extension access. Parameters are bound by name from `parameters`, never interpolated. The size of the result is capped by the row limit of $viewdefinition-run."}]
+
+    :blaze.addon.sql-on-fhir.operation.run/raw-body {}
+
+    :blaze.addon.sql-on-fhir.operation.sqlquery/handler
+    {:max-rows #blaze/cfg ["VIEWDEFINITION_RUN_MAX_ROWS" pos-int? 10000]
+     :timeout-seconds #blaze/cfg ["SQLQUERY_RUN_TIMEOUT_SECONDS" pos-int? 30]
+     :max-memory #blaze/cfg ["SQLQUERY_RUN_MAX_MEMORY" string? "256MiB"]
+     :max-concurrent #blaze/cfg ["SQLQUERY_RUN_MAX_CONCURRENT" pos-int? 2]}
+
+    :blaze.addon.sql-on-fhir.operation.sortie/app
+    {:app #blaze/ref :blaze.handler/app}
+
+    :blaze/server
+    {:handler #blaze/ref :blaze.addon.sql-on-fhir.operation.sortie/app}}}
+
 """
 
 
@@ -114,7 +150,7 @@ def generer():
     if texte.count(ANCRE) != 1:
         raise SystemExit(f"ECHEC : ancre :features absente ou multiple dans le blaze.edn du jar")
     entete = (f";; GENERE par generer-overlay.py : ne pas editer. blaze.edn du jar, plus les fonctionnalites\n"
-              f";; viewdefinition-run et viewdefinition-export. sha256 du blaze.edn amont : {hashlib.sha256(amont).hexdigest()}\n\n")
+              f";; viewdefinition-run, viewdefinition-export et sqlquery-run. sha256 du blaze.edn amont : {hashlib.sha256(amont).hexdigest()}\n\n")
     return entete + texte.replace(ANCRE, ANCRE + AJOUT, 1)
 
 

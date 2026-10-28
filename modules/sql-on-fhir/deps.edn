@@ -2,6 +2,10 @@
 ;; Rien de Blaze n'est declare ici en :deps — le jar l'apporte a l'execution.
 {:paths ["src" "resources"]
 
+ ;; Moteur SQL embarque de l'operation SQL de F-039 (ADR 0014) : jar publie tel quel, 0 entree en double
+ ;; avec le jar de Blaze (docs/impacts-blaze.md IB-09). Version = DUCKDB_JDBC_VERSION de versions.env.
+ :deps {org.duckdb/duckdb_jdbc {:mvn/version "2.0.0.0"}}
+
  :aliases
  {;; Classpath d'execution et de test : jar publie + aides de test de Blaze (chemins SEULS,
   ;; sans leurs dependances locales, qui ramenerait les sources de Blaze dans le classpath).

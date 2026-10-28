@@ -1,6 +1,6 @@
 # Manuel — ce qui existe, ce qui n'existe pas
 
-<!-- Tenu par `architect`. Décrit l'état au 2026-10-17 ; toute affirmation porte la
+<!-- Tenu par `architect`. Décrit l'état au 2026-10-17, complété le 2026-10-28 (`$sqlquery-run`) ; toute affirmation porte la
      commande qui la vérifie. Mis à jour dans la même invocation que l'événement qui le
      périme. -->
 
@@ -23,6 +23,10 @@ Ce document s'adresse à qui veut savoir **où en est le projet** sans lire le c
   (`docs/configuration.md` pour les réglages).
 - Les deux opérations acceptent une **vue rangée** dans une `Library`, désignée par sa canonique
   (`viewReference` en `url` ou `url|version`) ; autres formes refusées (§4).
+- Il **exécute une requête SQL sur les vues** (`POST /fhir/$sqlquery-run`, F-039) : `SELECT` seul,
+  sur les données courantes, dans une base en mémoire ouverte puis fermée à chaque appel ; allumée
+  par défaut, sans authentification. Usage, limites et paramètres : `README.md`, « Requêtes SQL sur
+  les vues » ; décision, limites L1 à L18 et retrait : ADR 0014.
 - Les **écarts assumés à la spécification** SQL on FHIR sont réunis au §4.
 
 ## 2. Ce qui existe, et comment le vérifier
@@ -42,6 +46,7 @@ Les commandes se lancent depuis la racine du dépôt. Celles du module demandent
 | Fonctions et opérateurs FHIRPath ajoutés à Blaze (`join`, `lowBoundary`, `or`, `<`, `+`, `%rowIndex`, constantes typées…) ; fonctions de texte `startsWith`, `endsWith`, `contains`, `upper`, `lower`, `length`, `substring`, `indexOf`, `replace` et opérateurs `~`, `!~` (entrée vide → vide, `~` faux, `!~` vrai ; plusieurs éléments → 422 nommant fonction et cardinalité ; `matches`, `replaceMatches`, `trim`, `toChars` refusées en nommant la fonction). *Décidé, non mesuré* contre une implémentation de référence : `substring(start)` avec `start` égal à la longueur rend `''` ; `~` entre non-chaînes délègue à `=` de Blaze (décimaux non arrondis, sans la règle d'équivalence des dates) | `make -C modules/sql-on-fhir test` | `… 0 failures.` | `207 tests, 1618 assertions, 0 failures.`, code 0, 2026-10-17 |
 | Moteur de vues en mémoire : la suite de conformité | `make -C modules/sql-on-fhir conformance` | `REUSSIS 144/144  ECHEC 0  NON-BRANCHE 0`, code 0 | identique, 2026-10-17 |
 | Le moteur n'a pas besoin de la base de Blaze | `make -C modules/sql-on-fhir independance` | `SUCCES`, code 0 | `SUCCES : REUSSIS 144/144  ECHEC 0  NON-BRANCHE 0 ; 0 namespace blaze.db / blaze.interaction chargé`, code 0, 2026-10-17 |
+| Requête SQL sur les vues (`$sqlquery-run`) : tables = vues, lignes et calculs égaux à `$viewdefinition-run`, paramètre lié, lecture seule, refus 400/404/422, plafonds de durée, de mémoire, de concurrence et de lignes, interrupteur | `bash tests/integration/test.sh IT-049 IT-050 IT-051 IT-052 IT-053 IT-054 IT-055 IT-056 IT-057 IT-058 IT-059 IT-060 IT-061` (banc kind, `scripts/banc.sh`) | `SYNTHESE` sans `echec` sur un banc dont les vues tiennent sous les plafonds par défaut ; passages à plafonds abaissés ou relevés : `docs/tests.md` §3 | `SYNTHESE cas=13 succes=26 echec=6 non-branche=1 total=33`, code 8, 2026-10-27 : les 6 échecs et le `NON-BRANCHE` sont les rouges attendus d'un banc dont la vue `observation` (168 981 lignes) dépasse les plafonds par défaut, verts à leurs passages dédiés (`bench/baselines/T-114/lancement4/`, `docs/tests.md` §3) |
 | Couverture des tests du module | `make -C modules/sql-on-fhir test-coverage` | ligne `ALL FILES` ≥ 95 % | `ALL FILES` `95,32`, code 0, 2026-10-17 |
 
 Les opérations HTTP (`$viewdefinition-run`, `$viewdefinition-export`, `viewReference`) sont
@@ -95,15 +100,23 @@ Toutes ces limites sont admises et consignées dans `docs/couverture.md` §2 et 
 - **Export, tâche `ready` au moment d'un arrêt brutal** : elle reste `ready` ; la reprise ne la
   touche pas, et l'expiration ne purge que les tâches terminées. Le lieu de suivi pourrait alors
   rendre 202 sans fin ; le client l'annule par `DELETE`. *Décidé, non mesuré*.
+- **`$sqlquery-run`** : dix-huit limites d'utilisation (L1 à L18, ADR 0014), dont plafond de durée
+  de protection et non de précision (L3), chargement des vues en tas hors plafond de mémoire (L17),
+  aucune authentification (L8). Risque résiduel documenté (décision humaine du 2026-10-28) : la
+  limite mémoire du pod ne couvre pas la somme des bornes (ADR 0014 point 5) ; écriture massive
+  pendant des requêtes saturantes non mesurée, aucune tâche. La démonstration docker compose
+  (`demo/`) ne pose pas le jar du moteur : l'opération y rend 500 (relevé du 2026-10-28).
 - **Un seul nœud Blaze** (variante `standalone`) : ni plusieurs nœuds, ni stockage réseau ne
   sont éprouvés.
 
 ## 4. Écarts à la spécification
 
-Référence : IG SQL on FHIR `2.1.0-pre` du 2026-05-21, pages
+Référence : IG SQL on FHIR de la version `SQL_ON_FHIR_IG_VERSION` de `versions.env`, construction du 2026-05-21, pages
 `OperationDefinition-ViewDefinitionRun.html` (« run ») et `OperationDefinition-ViewDefinitionExport.html`
 (« export ») de `https://build.fhir.org/ig/FHIR/sql-on-fhir-v2/`, et leurs `OperationDefinition`
-du paquet `package.tgz` ; relues le 2026-10-13. Une ligne par écart assumé.
+du paquet `package.tgz` ; relues le 2026-10-13 ; pour `$sqlquery-run` (« sql »),
+`OperationDefinition-SQLQueryRun.json` du même paquet, relu le 2026-10-27 (T-119). Une ligne par
+écart assumé.
 
 | Sujet | Ce que dit l'IG | Ce que fait le module |
 |---|---|---|
@@ -116,6 +129,10 @@ du paquet `package.tgz` ; relues le 2026-10-13. Une ligne par écart assumé.
 | Accès non autorisé aux URLs d'export | 401 ou 403 | 404 `not-found` (URL à jeton de 192 bits, voie « Non-guessable URLs » de l'IG) |
 | `patient` ou `group` répétés (export) | `patient` 0..\*, `group` 0..\* ; paramètre non géré : 400 + `OperationOutcome` | 400 `not-supported` « Only one `patient` and one `group` are supported. » |
 | `DELETE` d'un export terminé | `DELETE` du lieu de suivi = annulation (SHOULD) : 202, puis 404 ; rien sur une tâche terminée ; `cancelUrl` 0..1 | 202, `Task` et fichiers supprimés, lieu à 404 ensuite ; `DELETE` sur résultat et fichier : 405 |
+| Niveaux d'appel (sql) | `system`, `type`, `instance` à `true`, `resource` `Library` | niveau système seul : `POST /fhir/Library/$sqlquery-run` → 405, `POST /fhir/Library/<id>/$sqlquery-run` → 404 ; la `Library` se passe par `queryReference` ou `queryResource` |
+| `_format=fhir` (sql) | sortie `Parameters` | refusé, 400 `not-supported` ; servis : `ndjson` (défaut), `json`, `csv` |
+| `_format=parquet` (sql) | valeur de l'ensemble des formats (extensible) | refusé, 400 `not-supported` |
+| `source` (sql) | entrée `source` (string) | refusée, 400 `not-supported` |
 
 Écarts relevés mais **non tranchés** : paramètre 0..1 répété, documentation du
 `CapabilityStatement`.

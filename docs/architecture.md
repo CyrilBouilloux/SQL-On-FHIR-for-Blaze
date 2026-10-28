@@ -1,7 +1,7 @@
 # Architecture — ce qui existe
 
 <!-- Tenu par `architect`. Décrit l'existant, renvoie aux ADR sans les recopier ; aucune
-     version, aucun secret. État au 2026-10-17. -->
+     version, aucun secret. État au 2026-10-17, complété le 2026-10-28 (`$sqlquery-run`). -->
 
 ## Architecture cible
 
@@ -61,6 +61,7 @@ d'extension touchés : `docs/impacts-blaze.md` ; fichier par fonctionnalité : `
 | Opération `$viewdefinition-run` | `src/blaze/addon/sql_on_fhir/operation/`, `src/blaze/addon/sql_on_fhir/serializer.clj` | `params` lit le `Parameters` brut (refus 400) ; `run` compile la vue une fois, lit les lignes à la valeur de base de la requête jusqu'au plafond + 1 (au-delà : 422 `too-costly`), rend les refus de vue en 422 ; `serializer` écrit NDJSON (défaut), JSON, CSV ; `sortie` : voie de sortie brute (IB-12), lit l'`Accept` d'origine avant de le fixer (format de repli après `_format`) |
 | Opération `$viewdefinition-export` | `src/blaze/addon/sql_on_fhir/operation/export.clj`, `src/blaze/addon/sql_on_fhir/export/`, `src/blaze/addon/sql_on_fhir/serializer/file.clj` | refuse avant toute écriture (400, 422) ; crée une `Task` de l'ordonnanceur de Blaze à l'instant `t` de la requête, rend 202 ; la tâche de fond (`export/job.clj`, pool de 2 fils) écrit un fichier par vue en flux (`<jeton>.<ext>.part` puis renommage) sur le volume d'export ; routes `__export/status|result|file/<jeton>` servies par l'enrobage de sortie, jetons `SecureRandom` (`export/token.clj`) ; `docs/impacts-blaze.md` IB-11, IB-13 |
 | Vue rangée, `viewReference` | `src/blaze/addon/sql_on_fhir/operation/reference.clj` | résout la canonique (`url` ou `url\|version`) en une `Library` cherchée par `type-query` dans la base de la requête, jamais téléchargée ; la vue est la pièce `application/json` de `content` ; refus 400 `not-supported` (sans `scheme:`), `not-found`, `multiple-matches`, 422 (contenu inutilisable) ; l'export résout au lancement, la `Task` porte la vue ; `docs/impacts-blaze.md` IB-14 |
+| Opération `$sqlquery-run` (ADR 0014) | `src/blaze/addon/sql_on_fhir/operation/sqlquery.clj`, `operation/sqlquery_params.clj`, `src/blaze/addon/sql_on_fhir/sql/` | `sqlquery_params` lit le `Parameters` (refus 400) ; `sql/query` extrait de la `Library` `sql-query` le SQL et les tables (`relatedArtifact`), `sql/engine` refuse tout ce qui n'est pas `SELECT` avant exécution ; `sql/tables` ouvre une base DuckDB en mémoire par requête (jar `duckdb_jdbc` de l'image), y charge en tables les vues rangées calculées par le moteur de vues, puis la ferme ; paramètres liés par nom ; plafonds de durée (échéance unique), de mémoire, de concurrence (503 avant toute ouverture) et de lignes ; interrupteur `DISABLE_SQLQUERY_RUN` ; réglages : `docs/configuration.md` ; limites L1 à L18 et retrait : ADR 0014 ; `docs/impacts-blaze.md` IB-16 |
 | Suite de conformité | `conformance/blaze/`, suite copiée `conformance/sql-on-fhir-js/` | 144 cas, règle du runner de référence |
 
 Le moteur ne charge aucun namespace `blaze.db` ni `blaze.interaction` (`make -C
@@ -76,9 +77,13 @@ n'est jamais écrasée en `completed`.
 
 Image : `build/Dockerfile`, unique `FROM` l'image publiée épinglée par empreinte, jar du module
 (`build/blaze-addon.jar`, `make jar`) copié en `/app/addon/blaze-addon.jar`, avant le jar de
-Blaze dans le classpath (`make image`). Le chart la déploie sous l'étiquette
+Blaze dans le classpath, et jar du moteur SQL `duckdb_jdbc` (F-039) téléchargé de Maven Central
+à la construction, empreinte de `versions.env` vérifiée, posé en `/app/addon/duckdb_jdbc.jar`
+(`make image`, réseau requis ; `build/Dockerfile`, `docs/construction.md`). Le chart la déploie sous l'étiquette
 `image.blaze.tag` (`docs/configuration.md`) ; aucun registre n'est fourni.
 
-## Prévu, non commencé
+## Décidé, non livré
 
 Parquet : `docs/couverture.md` §5.
+
+SQL sur les vues (`$sqlquery-run`) : livré (couche « Opération `$sqlquery-run` » ci-dessus), F-039 non encore validé (revue T-121) ; usage, limites et paramètres : `README.md`, « Requêtes SQL sur les vues ».

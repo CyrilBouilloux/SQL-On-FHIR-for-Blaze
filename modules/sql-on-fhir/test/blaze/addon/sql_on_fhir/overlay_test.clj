@@ -9,6 +9,7 @@
    [blaze.addon.sql-on-fhir.operation.export]
    [blaze.addon.sql-on-fhir.operation.run]
    [blaze.addon.sql-on-fhir.operation.sortie]
+   [blaze.addon.sql-on-fhir.operation.sqlquery]
    [blaze.system :as system]
    [blaze.test-util :as tu]
    [clojure.edn :as edn]
@@ -82,14 +83,55 @@
         :app := {:ref :blaze.handler/app}
         :export-routes := {:ref :blaze.addon.sql-on-fhir.export.routes/handler})))
   (testing "les deux éteintes : le serveur d'origine"
-    (let [c (config {"DISABLE_VIEWDEFINITION_RUN" "true" "DISABLE_VIEWDEFINITION_EXPORT" "true"})]
+    (let [c (config {"DISABLE_VIEWDEFINITION_RUN" "true" "DISABLE_VIEWDEFINITION_EXPORT" "true" "DISABLE_SQLQUERY_RUN" "true"})]
       (is (= #{} (operations c)))
       (is (not (contains? c :blaze.addon.sql-on-fhir.operation.sortie/app))))))
+
+(def ^:private cle-sqlquery :blaze.addon.sql-on-fhir.operation.sqlquery/handler)
+
+(defn- operations-sql [config]
+  (into #{}
+        (comp (map :blaze.rest-api.operation/code) (filter #(= "sqlquery-run" %)))
+        (:blaze.rest-api/operations config)))
+
+(deftest interrupteur-de-sqlquery-run
+  (testing "variable absente ou `false` : `$sqlquery-run` est déclarée et servie (allumée par défaut)"
+    (doseq [env [{} {"DISABLE_SQLQUERY_RUN" "false"}]]
+      (let [c (config env)]
+        (is (= #{"sqlquery-run"} (operations-sql c)))
+        (is (contains? c cle-sqlquery))
+        (given (:blaze.rest-api/operations c)
+          [#(some (fn [o] (when (= "sqlquery-run" (:blaze.rest-api.operation/code o)) o)) %) :blaze.rest-api.operation/system-handler]
+          := {:ref cle-sqlquery}))))
+  (testing "`true` : opération et composant absents ; les opérations de vue sont inchangées"
+    (let [c (config {"DISABLE_SQLQUERY_RUN" "true"})]
+      (is (= #{} (operations-sql c)))
+      (is (not (contains? c cle-sqlquery)))
+      (is (= #{"viewdefinition-run" "viewdefinition-export"} (operations c)))))
+  (testing "seule allumée : l'enveloppe de sortie et le corps brut sont là, sans routes d'export"
+    (let [c (config {"DISABLE_VIEWDEFINITION_RUN" "true" "DISABLE_VIEWDEFINITION_EXPORT" "true"})]
+      (is (= #{"sqlquery-run"} (operations-sql c)))
+      (is (= {:ref :blaze.addon.sql-on-fhir.operation.sortie/app} (get-in c [:blaze/server :handler])))
+      (is (contains? c :blaze.addon.sql-on-fhir.operation.run/raw-body))
+      (is (not (contains? (:blaze.addon.sql-on-fhir.operation.sortie/app c) :export-routes))))))
+
+(deftest sqlquery-run-parametres
+  (testing "noms, types et défauts des quatre réglages (ADR 0014, point 5) ; le plafond de lignes est celui de `$viewdefinition-run`"
+    (given (config {})
+      [cle-sqlquery :max-rows] := {:cfg ["VIEWDEFINITION_RUN_MAX_ROWS" 'pos-int? 10000]}
+      [cle-sqlquery :timeout-seconds] := {:cfg ["SQLQUERY_RUN_TIMEOUT_SECONDS" 'pos-int? 30]}
+      [cle-sqlquery :max-memory] := {:cfg ["SQLQUERY_RUN_MAX_MEMORY" 'string? "256MiB"]}
+      [cle-sqlquery :max-concurrent] := {:cfg ["SQLQUERY_RUN_MAX_CONCURRENT" 'pos-int? 2]}))
+  (testing "la documentation de metadata dit ce que l'opération accepte"
+    (let [doc (->> (:blaze.rest-api/operations (config {}))
+                   (some #(when (= "sqlquery-run" (:blaze.rest-api.operation/code %)) (:blaze.rest-api.operation/documentation %))))]
+      (is (re-find #"SELECT" doc))
+      (is (re-find #"queryResource" doc)))))
 
 (deftest un-composant-derriere-chaque-cle
   (testing "chaque clé ajoutée par l'overlay a une implémentation de `ig/init-key` dans le module"
     (let [defaut (get-method ig/init-key :default)]
-      (doseq [k (concat cles-export [cle-run :blaze.addon.sql-on-fhir.operation.run/raw-body
+      (doseq [k (concat cles-export [cle-sqlquery cle-run :blaze.addon.sql-on-fhir.operation.run/raw-body
                                      :blaze.addon.sql-on-fhir.operation.sortie/app])]
         (testing k
           (is (not= defaut (get-method ig/init-key k)))))))
@@ -117,7 +159,8 @@
               rdr)))
 
 (def ^:private specs-des-composants
-  {:blaze.job/viewdefinition-export "blaze.addon.sql-on-fhir.export.job"
+  {:blaze.addon.sql-on-fhir.operation.sqlquery/handler "blaze.addon.sql-on-fhir.operation.sqlquery"
+   :blaze.job/viewdefinition-export "blaze.addon.sql-on-fhir.export.job"
    :blaze.addon.sql-on-fhir.export.routes/handler "blaze.addon.sql-on-fhir.export.routes"
    :blaze.addon.sql-on-fhir.export.lifecycle/manager "blaze.addon.sql-on-fhir.export.lifecycle"})
 
@@ -158,7 +201,24 @@
              (refuses (assoc env-valide "VIEWDEFINITION_EXPORT_DIR" v)))
           v)))
   (testing "l'export éteinte : rien n'est exigé"
-    (is (= #{} (refuses {"DISABLE_VIEWDEFINITION_EXPORT" "true"})))))
+    (is (= #{} (refuses {"DISABLE_VIEWDEFINITION_EXPORT" "true"}))))
+  (testing "`$sqlquery-run` : entier ≥ 1 pour la durée, la concurrence et le plafond de lignes ; taille pour la mémoire"
+    (doseq [[nom v] (concat (for [nom ["SQLQUERY_RUN_TIMEOUT_SECONDS" "SQLQUERY_RUN_MAX_CONCURRENT" "VIEWDEFINITION_RUN_MAX_ROWS"]
+                                  v ["0" "-1" "1.5" "abc"]]
+                              [nom v])
+                            (for [v ["256" "0MiB" "256 Mo" "1'; DROP" "MiB"]] ["SQLQUERY_RUN_MAX_MEMORY" v]))]
+      (is (= #{[cle-sqlquery (case nom
+                               "SQLQUERY_RUN_TIMEOUT_SECONDS" :timeout-seconds
+                               "SQLQUERY_RUN_MAX_CONCURRENT" :max-concurrent
+                               "VIEWDEFINITION_RUN_MAX_ROWS" :max-rows
+                               "SQLQUERY_RUN_MAX_MEMORY" :max-memory)]}
+             (refuses (assoc env-valide nom v)))
+          (str nom "=" (pr-str v)))))
+  (testing "une variable vide vaut variable absente : le défaut s'applique"
+    (is (= #{} (refuses (assoc env-valide "SQLQUERY_RUN_TIMEOUT_SECONDS" "" "SQLQUERY_RUN_MAX_MEMORY" "")))))
+  (testing "valeurs valides acceptées"
+    (is (= #{} (refuses (assoc env-valide "SQLQUERY_RUN_MAX_MEMORY" "1GB" "SQLQUERY_RUN_TIMEOUT_SECONDS" "5"
+                               "SQLQUERY_RUN_MAX_CONCURRENT" "8" "VIEWDEFINITION_RUN_MAX_ROWS" "50"))))))
 
 ;; --- F-011 : format de `viewReference` documenté (HL7 : « SHALL document ») ---------------------
 

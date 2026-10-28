@@ -124,3 +124,22 @@
     (testing "la route de `run` garde son traitement"
       (let [[vue _] (appel-export export-routes route)]
         (given vue ::sortie/format := "csv")))))
+
+;; --- `$sqlquery-run` (T-116, SQ-03) : même enveloppe ----------------------------------------
+
+(deftest route-sqlquery-run
+  (let [r (assoc route :uri "/fhir/$sqlquery-run" :headers {"accept" "text/csv"})]
+    (testing "entrée : `_format` rangé, `Accept` fixé, format d'`Accept` relevé"
+      (given (first (appel {:status 200 :body nil} r))
+        :query-string := "_limit=2"
+        [:headers "accept"] := "application/fhir+json"
+        ::sortie/format := "csv"
+        ::sortie/accept-format := "csv"))
+    (testing "sortie : les lignes brutes remises en corps"
+      (given (second (appel {:status 200 :body nil ::sortie/raw "a\r\n" ::sortie/content-type "text/csv"} r))
+        :body := "a\r\n"
+        [:headers "Content-Type"] := "text/csv"))
+    (testing "la route de `$viewdefinition-run` est inchangée, une autre route du même suffixe n'est pas prise"
+      (given (first (appel {:status 200} route)) ::sortie/format := "csv")
+      (let [autre (assoc r :uri "/fhir/$sqlquery-runner")]
+        (is (= autre (first (appel {:status 200} autre))))))))

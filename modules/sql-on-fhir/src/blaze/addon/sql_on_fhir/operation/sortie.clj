@@ -1,6 +1,6 @@
 (ns blaze.addon.sql-on-fhir.operation.sortie
-  "IB-12 : voie de sortie brute de `$viewdefinition-run`. Le composant `app` enrobe
-  `:blaze.handler/app`. Pour cette seule route, à l'entrée il range `_format` dans la requête
+  "IB-12 : voie de sortie brute de `$viewdefinition-run` et de `$sqlquery-run` (T-116, IB-16). Le
+  composant `app` enrobe `:blaze.handler/app`. Pour ces deux routes seules, à l'entrée il range `_format` dans la requête
   lit puis fixe `Accept` (le format qu'il porte, ::accept-format, passe après `_format`), à la sortie il remet les lignes (clé `::raw`) en `:body`. Cela suppose deux
   comportements de Blaze que garde `sortie-amont-test` : clé inconnue conservée, `:body` nil
   non encodé. T-048 (IB-13) : le même composant sert les routes de l'export (`:export-routes`,
@@ -13,8 +13,12 @@
    [ring.util.codec :as codec]
    [taoensso.timbre :as log]))
 
-(defn- run-request? [{:keys [request-method uri]}]
-  (and (= :post request-method) (some-> uri (str/ends-with? "/$viewdefinition-run"))))
+(defn- run-request?
+  "Vrai pour `POST …/$viewdefinition-run` et `POST …/$sqlquery-run` (T-116) : les deux rendent des lignes brutes."
+  [{:keys [request-method uri]}]
+  (and (= :post request-method)
+       (some? uri)
+       (or (str/ends-with? uri "/$viewdefinition-run") (str/ends-with? uri "/$sqlquery-run"))))
 
 (defn- format-param [query-string]
   (some->> query-string (re-find #"(?:^|&)_format=([^&]*)") second codec/form-decode-str))

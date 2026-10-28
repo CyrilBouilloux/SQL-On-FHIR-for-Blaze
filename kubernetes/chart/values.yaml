@@ -45,6 +45,22 @@ blaze:
   viewdefinitionRun:
     actif: true
     plafondLignes: 10000
+  # Opération $sqlquery-run (F-039, ADR 0014 point 5), moteur SQL embarqué. OPTIONS DE MISE EN
+  # ROUTE, à réviser selon l'usage ; chacune seule, sans reconstruire l'image. Interrupteur INVERSE :
+  # `actif: false` pose DISABLE_SQLQUERY_RUN=true ; `true` (défaut) ne pose rien (allumée, sans
+  # authentification : ADR 0014 point 4, limite L8). Le plafond de LIGNES est celui de
+  # $viewdefinition-run ci-dessus (viewdefinitionRun.plafondLignes) : il s'applique aussi à cette
+  # opération, aucun paramètre neuf.
+  sqlqueryRun:
+    actif: true
+    delaiSecondes: 30          # SQLQUERY_RUN_TIMEOUT_SECONDS : durée maximale de TOUTE la requête (chargement des vues, puis exécution SQL ; échéance unique, ADR 0014 L3), puis interrompue, 422 `timeout` (entier >= 1) ; plafond de protection, non de précision : dépassement possible jusqu'à 5 s (ADR 0014 L3) ; à ajuster au volume de données et à la machine (30 s pour le jeu de référence ; la requête sur la vue observation de 168 981 lignes a duré de 72,0 à 100,1 s, bench/baselines/T-116/iter2/)
+    plafondMemoire: 256MiB     # SQLQUERY_RUN_MAX_MEMORY : mémoire du moteur, hors tas, sans débordement disque (ex. 256MiB, 1GiB)
+    # SQLQUERY_RUN_MAX_CONCURRENT : requêtes simultanées au plus (entier >= 1) ; la suivante est refusée
+    # sur-le-champ, 503 `throttled`. Chaque requête peut employer jusqu'à plafondMemoire (hors tas) :
+    # à dimensionner par l'exploitant avec la limite du pod (ressources.blaze.limits.memory, 2560Mi).
+    # Mesuré : 2 requêtes simultanées saturantes, pic du pod 1 823 Mio (bench/baselines/T-118/) ;
+    # au-delà de 2, ou avec une écriture massive en même temps, non mesuré (ADR 0014 point 5).
+    plafondSimultanees: 2
   # Opération $viewdefinition-export (F-007, ADR 0008 point 7). Interrupteur INVERSE, comme
   # ci-dessus : `actif: false` pose DISABLE_VIEWDEFINITION_EXPORT=true ; `true` (défaut) ne
   # pose rien (`false` explicite : blaze.env). Fichiers sur un PVC SÉPARÉ `<release>-export`
@@ -79,7 +95,7 @@ reseau:
 ressources:
   blaze:
     requests: { cpu: "500m", memory: "1536Mi" }
-    limits: { memory: "2Gi" }
+    limits: { memory: "2560Mi" }
   nginx:
     requests: { cpu: "50m", memory: "64Mi" }
     limits: { memory: "256Mi" }

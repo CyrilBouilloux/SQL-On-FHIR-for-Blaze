@@ -49,15 +49,19 @@ module ne redéfinit aucune entrée de Blaze hors `blaze.edn` (contrôle M4 de
 ### L'image : `make image`
 
 `make image` reconstruit le jar (`make jar`), puis `docker build -f build/Dockerfile build`
-avec `BLAZE_VERSION` et `BLAZE_IMAGE_DIGEST` lus dans `versions.env`. Étiquette :
+avec `BLAZE_VERSION`, `BLAZE_IMAGE_DIGEST`, `DUCKDB_JDBC_VERSION` et `DUCKDB_JDBC_SHA256` lus dans
+`versions.env`. Étiquette :
 `blaze-platform-module:dev` (variable `IMAGE` du `Makefile`, jamais `latest`).
 
 - **lit** : `build/Dockerfile`, `build/blaze-addon.jar`, l'image `samply/blaze` épinglée par
-  empreinte (unique `FROM`) ;
+  empreinte (unique `FROM`), et le jar Maven `org.duckdb/duckdb_jdbc` (moteur SQL de
+  `$sqlquery-run`, F-039), **téléchargé de Maven Central** par `ADD --checksum` : une empreinte
+  qui diffère de `DUCKDB_JDBC_SHA256` fait échouer la construction (`digest mismatch`) ;
 - **produit** : une image dont `/app/addon/blaze-addon.jar` a la même empreinte que le jar
-  construit, et dont la commande est celle de l'image publiée, `-cp` au lieu de `-jar` :
-  `java -cp "/app/addon/blaze-addon.jar:/app/*" blaze.core` (jar du module devant celui de
-  Blaze).
+  construit, qui porte aussi `/app/addon/duckdb_jdbc.jar` (droits `0644`, lisible de
+  l'utilisateur non-root), et dont la commande est celle de l'image publiée, `-cp` au lieu de
+  `-jar` : `java -cp "/app/addon/blaze-addon.jar:/app/addon/duckdb_jdbc.jar:/app/*" blaze.core`
+  (jar du module devant celui de Blaze, jar du moteur entre les deux).
 
 L'image ne démarre qu'avec les quatre variables de `$viewdefinition-export` (ou
 `DISABLE_VIEWDEFINITION_EXPORT=true`) : `docs/configuration.md`, « Variables lues par
@@ -110,15 +114,19 @@ the module jar redefines no Blaze entry other than `blaze.edn` (check M4 of
 ### The image: `make image`
 
 `make image` rebuilds the jar (`make jar`), then runs
-`docker build -f build/Dockerfile build` with `BLAZE_VERSION` and `BLAZE_IMAGE_DIGEST` read
-from `versions.env`. Tag: `blaze-platform-module:dev` (`IMAGE` variable of the `Makefile`,
+`docker build -f build/Dockerfile build` with `BLAZE_VERSION`, `BLAZE_IMAGE_DIGEST`,
+`DUCKDB_JDBC_VERSION` and `DUCKDB_JDBC_SHA256` read from `versions.env`. Tag: `blaze-platform-module:dev` (`IMAGE` variable of the `Makefile`,
 never `latest`).
 
 - **reads**: `build/Dockerfile`, `build/blaze-addon.jar`, the `samply/blaze` image pinned by
-  digest (single `FROM`);
+  digest (single `FROM`), and the `org.duckdb/duckdb_jdbc` Maven jar (SQL engine of
+  `$sqlquery-run`, F-039), **downloaded from Maven Central** by `ADD --checksum`: a digest
+  that differs from `DUCKDB_JDBC_SHA256` fails the build (`digest mismatch`);
 - **produces**: an image whose `/app/addon/blaze-addon.jar` has the same digest as the built
-  jar, and whose command is the published image's one with `-cp` instead of `-jar`:
-  `java -cp "/app/addon/blaze-addon.jar:/app/*" blaze.core` (module jar in front of Blaze's).
+  jar, which also holds `/app/addon/duckdb_jdbc.jar` (mode `0644`, readable by the non-root
+  user), and whose command is the published image's one with `-cp` instead of `-jar`:
+  `java -cp "/app/addon/blaze-addon.jar:/app/addon/duckdb_jdbc.jar:/app/*" blaze.core` (module
+  jar in front of Blaze's, engine jar in between).
 
 The image only starts with the four `$viewdefinition-export` variables (or
 `DISABLE_VIEWDEFINITION_EXPORT=true`): `docs/configuration.md`, "Variables read by the image".

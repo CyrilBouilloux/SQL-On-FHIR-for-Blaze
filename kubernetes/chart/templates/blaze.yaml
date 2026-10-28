@@ -61,6 +61,18 @@ spec:
             {{- if not $vr.actif }}
             - { name: DISABLE_VIEWDEFINITION_RUN, value: "true" }
             {{- end }}
+            {{- /* Opération $sqlquery-run (F-039, ADR 0014 point 5). Même convention : `actif: false`
+                   pose DISABLE_SQLQUERY_RUN=true. Trois plafonds toujours posés, validés sur leur type.
+                   VIEWDEFINITION_RUN_MAX_ROWS (ci-dessus) s'applique aussi à cette opération. */}}
+            {{- $sq := .Values.blaze.sqlqueryRun }}
+            {{- if not (kindIs "bool" $sq.actif) }}{{ fail (printf "blaze.sqlqueryRun.actif : booléen attendu (true|false, --set et non --set-string), reçu %v" $sq.actif) }}{{ end }}
+            {{- if not (regexMatch "^[1-9][0-9]*(KB|MB|GB|TB|KiB|MiB|GiB|TiB)$" (toString $sq.plafondMemoire)) }}{{ fail (printf "blaze.sqlqueryRun.plafondMemoire : taille entière avec unité KB|MB|GB|TB|KiB|MiB|GiB|TiB attendue (ex. 256MiB), reçu %v" $sq.plafondMemoire) }}{{ end }}
+            - { name: SQLQUERY_RUN_TIMEOUT_SECONDS, value: {{ include "blaze.entier" (dict "nom" "blaze.sqlqueryRun.delaiSecondes" "v" $sq.delaiSecondes) | quote }} }
+            - { name: SQLQUERY_RUN_MAX_MEMORY, value: {{ toString $sq.plafondMemoire | quote }} }
+            - { name: SQLQUERY_RUN_MAX_CONCURRENT, value: {{ include "blaze.entier" (dict "nom" "blaze.sqlqueryRun.plafondSimultanees" "v" $sq.plafondSimultanees) | quote }} }
+            {{- if not $sq.actif }}
+            - { name: DISABLE_SQLQUERY_RUN, value: "true" }
+            {{- end }}
             {{- /* Opération $viewdefinition-export (F-007, ADR 0008 point 7). Même convention
                    que ci-dessus : `actif: false` pose DISABLE_VIEWDEFINITION_EXPORT=true ; `true`
                    ne pose rien. DISABLE_VIEWDEFINITION_EXPORT=false (troisième état) se pose par

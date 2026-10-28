@@ -30,8 +30,9 @@ $(MODULES):
 jar:           ## jar du module (src + resources suivis), à poser devant le jar de Blaze
 	build/construire-jar.sh
 
-image: jar       ## FROM l'image publiée + jar du module devant celui de Blaze
+image: jar       ## FROM l'image publiée + jar du module devant celui de Blaze + jar du moteur SQL (empreinte vérifiée)
 	docker build -f build/Dockerfile -t $(IMAGE) \
-	  --build-arg BLAZE_VERSION=$(BLAZE_VERSION) --build-arg BLAZE_IMAGE_DIGEST=$(BLAZE_IMAGE_DIGEST) build
+	  --build-arg BLAZE_VERSION=$(BLAZE_VERSION) --build-arg BLAZE_IMAGE_DIGEST=$(BLAZE_IMAGE_DIGEST) \
+	  --build-arg DUCKDB_JDBC_VERSION=$(DUCKDB_JDBC_VERSION) --build-arg DUCKDB_JDBC_SHA256=$(DUCKDB_JDBC_SHA256) build
 
 .PHONY: outils nav check fmt lint test test-coverage $(MODULES) jar image

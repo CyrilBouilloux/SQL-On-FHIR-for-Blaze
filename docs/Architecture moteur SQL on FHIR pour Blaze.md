@@ -47,7 +47,7 @@ Au 2026-10-08, sur 19 composants, 7 existaient déjà, 3 étaient à étendre et
 | Stockage | Index de recherche et compartiments | Existant | Filtres par paramètre, ressources d'un Patient |  |
 | Stockage | Document store | Existant | Contenu des ressources, en CBOR |  |
 | Tests | Suite de conformité SQL on FHIR | Existant | Cas JSON partagés : vue, ressources, lignes attendues | Dépôt `FHIR/sql-on-fhir.js` |
-| Plus tard | Moteur SQL embarqué | À développer | Exécute `$sqlquery-run` sur les tables de vues | Phase ultérieure |
+| Plus tard | Moteur SQL embarqué | Développé | Exécute `$sqlquery-run` sur les tables de vues | F-039, ADR 0014 (`duckdb_jdbc`), à valider |
 
 ## Parcours d'une requête
 
@@ -133,7 +133,7 @@ Cette partie relie le moteur à la couche de persistance de Blaze et expose les 
 | Adaptateur de source | Utiliser `blaze.db.api` : `d/db` pour obtenir une vue stable, `d/type-list` pour parcourir un type, `d/type-query` avec `compile-type-query` et `execute-query` quand la vue a une clause `where` traduisible en recherche, `d/compartment-type-list` pour un patient, `d/new-batch-db` et `d/pull-many` pour charger les ressources. Lire les signatures exactes dans `modules/db/src/blaze/db/api.clj`. Fait (F-006) sans `d/new-batch-db` ni `compile-type-query` : le `where` reste évalué en FHIRPath (`DS-08` à faire). |
 | Opération synchrone | Prendre pour modèle `modules/operation-cql` : composant Integrant avec `ig/init-key` et `m/pre-init-spec`, handler au niveau système, enregistrement dans `resources/blaze.edn` derrière une variable d'environnement de type `:toggle`. Fait (F-006) : overlay généré, `DISABLE_VIEWDEFINITION_RUN`. |
 | Documentation | Documenter la variable dans `docs/deployment/environment-variables.md` et l'opération sous `docs/api/`. Ces pages n'existent pas dans ce dépôt : variables dans `docs/configuration.md`, usage et écarts à l'IG dans `docs/manuel.md`. |
-| Type ViewDefinition en R4 | La ressource n'est pas dans le modèle R4. Décidé (ADR 0005, option A) : le modèle s'étend pour l'analyse seulement, par un dépôt de StructureDefinition enveloppé ; vues en ligne (`viewResource`), jamais stockées — amendé le 2026-10-13 : vue rangée en `Library`, désignée par canonique (ADR 0009 ; mise en œuvre F-011, `validé` le 2026-10-14). |
+| Type ViewDefinition en R4 | La ressource n'est pas dans le modèle R4. Décidé (ADR 0005, amendement du 2026-10-10) : corps lu brut par `:post-middleware`, type non déclaré (l'option A, modèle étendu par un dépôt de StructureDefinition enveloppé, est abandonnée) ; vues en ligne (`viewResource`) — amendé le 2026-10-13 : vue rangée en `Library`, désignée par canonique (ADR 0009 ; mise en œuvre F-011, `validé` le 2026-10-14). |
 | Export asynchrone | Fait (F-007, ADR 0008) : `job-scheduler` de Blaze (`Task`, gestionnaire `:blaze.job/viewdefinition-export`), sans `job-async-interaction` ; fichiers sur un volume dédié ; 202 puis 303 servis par les routes propres du module. |
 | Sérialiseurs | NDJSON et JSON avec jsonista, CSV ensuite ; Parquet plus tard. Fait (F-006) pour NDJSON, JSON, CSV ; Parquet : F-008. |
 
@@ -220,17 +220,17 @@ Chaque stratégie fixe l'ordre des étapes et les critères d'acceptation commun
 
 | Code | Opération | Stratégie | Dépend de | Critère propre | Statut |
 | --- | --- | --- | --- | --- | --- |
-| `SPK-01` | Vérifier la licence de `FHIR/sql-on-fhir.js` et décider : copie des tests ou sous-module Git | `S-SPK` | aucune | Licence citée, choix noté | À faire |
+| `SPK-01` | Vérifier la licence de `FHIR/sql-on-fhir.js` et décider : copie des tests ou sous-module Git | `S-SPK` | aucune | Licence citée, choix noté | Fait (F-005) : ADR 0006, copie au commit `0821b673`, licence MIT |
 | `SPK-02` | Choisir le traitement de ViewDefinition en R4 : donnée brute dans `viewResource` ou type ajouté au modèle. Écrire d'abord le test sur un `Parameters` contenant un type inconnu | `S-SPK` | aucune | Comportement actuel démontré par un test, choix écrit | Fait (F-006) : ADR 0005 option A, corps lu brut ; amendée par l'ADR 0009 (F-011) |
 | `SPK-03` | Valider avec les mainteneurs le nom du module et la portée (issue Blaze #1543) | `S-SPK` | aucune | Réponse tracée dans l'issue | À faire |
-| `SPK-04` | Retrouver le sous-ensemble FHIRPath exact de la spécification et le comparer aux opérations `FP-xx` | `S-SPK` | aucune | Écarts transformés en nouvelles opérations `FP-xx` | À faire |
+| `SPK-04` | Retrouver le sous-ensemble FHIRPath exact de la spécification et le comparer aux opérations `FP-xx` | `S-SPK` | aucune | Écarts transformés en nouvelles opérations `FP-xx` | Fait (F-004) : sous-ensemble fixé par les critères de F-004 (2026-10-09) |
 | `SPK-05` | Figer la version de la spécification visée et les noms d'opérations (`$viewdefinition-run` ou `$run`, `$viewdefinition-export` ou `$export`) | `S-SPK` | aucune | Noms et version notés dans ce document | Fait (F-006) : `$viewdefinition-run`, `$viewdefinition-export`, IG `2.1.0-pre` (ADR 0005) |
 | `SPK-06` | Choisir le stockage des fichiers d'export (disque local, RocksDB ou stockage objet) | `S-SPK` | `SPK-03` | Choix écrit, limites de taille notées | Fait (F-007) : PVC séparé `<release>-export`, emplacement et plafond d'octets réglables (ADR 0005, ADR 0008 R3) |
-| `SPK-07` | Choisir la bibliothèque Parquet pour la JVM | `S-SPK` | `SPK-03` | Choix écrit, poids des dépendances mesuré | À faire |
-| `INF-01` | Créer le module vide : `deps.edn` racine, `Makefile`, test runner, ligne dans la matrice de `.github/workflows/build.yml` | `S-INF` | `SPK-03` | `make -C modules/<nom> test` passe sur un test vide ; CI verte | À faire |
-| `INF-02` | Banc de conformité : charger les 22 fichiers JSON, exécuter chaque cas, comparer selon `tests.schema.json`, afficher le taux par fichier | `S-INF` | `INF-01`, `SPK-01` | Rapport affichant 144 cas, tous échouant au départ | À faire |
+| `SPK-07` | Choisir la bibliothèque Parquet pour la JVM | `S-SPK` | `SPK-03` | Choix écrit, poids des dépendances mesuré | Fait (F-008) : `parquet-hadoop` (ADR 0005) |
+| `INF-01` | Créer le module vide : `deps.edn` racine, `Makefile`, test runner, ligne dans la matrice de `.github/workflows/build.yml` | `S-INF` | `SPK-03` | `make -C modules/<nom> test` passe sur un test vide ; CI verte | Fait (F-003) : tests contre le jar de l'image publiée, `make image` |
+| `INF-02` | Banc de conformité : charger les 22 fichiers JSON, exécuter chaque cas, comparer selon `tests.schema.json`, afficher le taux par fichier | `S-INF` | `INF-01`, `SPK-01` | Rapport affichant 144 cas, tous échouant au départ | Fait (F-005) : `make conformance` 144/144 (T-023) |
 | `INF-03` | Créer une issue GitHub par code du plan et un jalon GitHub par `J<n>` | `S-INF` | `SPK-03` | Chaque code a son numéro d'issue dans le suivi | À faire |
-| `INF-04` | Vérifier l'environnement de développement : Clojure installé, `make build-ig`, `make -C modules/fhir-path test` | `S-INF` | aucune | Les commandes réussissent (ce n'était pas vérifiable dans l'environnement de ce document) | À faire |
+| `INF-04` | Vérifier l'environnement de développement : Clojure installé, `make build-ig`, `make -C modules/fhir-path test` | `S-INF` | aucune | Les commandes réussissent (ce n'était pas vérifiable dans l'environnement de ce document) | Fait (F-003) : outils du poste (`make outils`) |
 
 ## J1 : Évaluateur FHIRPath
 
@@ -238,21 +238,21 @@ Toutes ces opérations modifient `modules/fhir-path/src/blaze/fhir_path.clj` et 
 
 | Code | Opération | Stratégie | Dépend de | Critère propre | Statut |
 | --- | --- | --- | --- | --- | --- |
-| `FP-01` | Fonction `empty()` | `S-FN` | `INF-04` | Vrai pour une collection vide, faux sinon | À faire |
-| `FP-02` | Fonction `not()` | `S-FN` | `INF-04` | Négation ; vide si l'entrée est vide | À faire |
-| `FP-03` | Fonction `join([séparateur])` | `S-FN` | `INF-04` | Séparateur absent = chaîne vide ; élément non chaîne refusé | À faire |
-| `FP-04` | Fonction `getResourceKey()` | `S-FN` | `INF-04` | Renvoie l'identifiant de la ressource courante | À faire |
-| `FP-05` | Fonction `getReferenceKey([type])` | `S-FN` | `FP-04` | Vide si le type de la référence diffère ; réutilise `split-literal-ref` | À faire |
-| `FP-06` | Fonctions `lowBoundary()` et `highBoundary()` | `S-FN` | `INF-04` | Dates partielles ; calcul propre au module sur les types `java.time` lus par Blaze (`date-time-lower-bound`/`-upper-bound` rendent des secondes d'époque, non réutilisables) | À faire |
-| `FP-07` | Opérateur `or` | `S-OPR` | `INF-04` | Table de vérité à trois valeurs complète | À faire |
-| `FP-08` | Opérateurs `<`, `<=`, `>`, `>=` | `S-OPR` | `INF-04` | Types compatibles comparés ; vide sinon | À faire |
-| `FP-09` | Opérateurs arithmétiques `+`, `-`, `*`, `/` sur nombres | `S-OPR` | `INF-04` | `+` existant inchangé pour les chaînes ; division par zéro = vide | À faire |
-| `FP-10` | Variable `$this` | `S-OPR` | `INF-04` | Utilisable dans `where($this ...)` | À faire |
-| `FP-11` | Contexte de constantes `%nom` : nouvelle clé `:constants` et nouvelle arité d'`eval` | `S-OPR` | `INF-04` | L'arité utilisée par l'indexation est inchangée ; constante inconnue = anomalie | À faire |
-| `FP-12` | Conversion des constantes typées : 18 types (hors `integer64`, F-004) | `S-OPR` | `FP-11` | Un test par type de constante | À faire |
-| `FP-13` | Variable réservée `%rowIndex` | `S-OPR` | `FP-11` | Alimentable par le moteur ; absente hors `forEach` = vide | À faire |
-| `FP-14` | Constructions non gérées : renvoyer une anomalie `unsupported` explicite au lieu de l'erreur générique | `S-OPR` | `INF-04` | Message nommant la construction ; test sur chaque catégorie de la grammaire | À faire |
-| `FP-15` | **Porte J1** : lancer toute la suite de `modules/fhir-path` et `modules/db`, mesurer les expressions de la suite de conformité | `S-INF` | `FP-01` à `FP-14` | Tous les tests verts ; liste des expressions encore non évaluables | À faire |
+| `FP-01` | Fonction `empty()` | `S-FN` | `INF-04` | Vrai pour une collection vide, faux sinon | Fait (F-004) |
+| `FP-02` | Fonction `not()` | `S-FN` | `INF-04` | Négation ; vide si l'entrée est vide | Fait (F-004) |
+| `FP-03` | Fonction `join([séparateur])` | `S-FN` | `INF-04` | Séparateur absent = chaîne vide ; élément non chaîne refusé | Fait (F-004) |
+| `FP-04` | Fonction `getResourceKey()` | `S-FN` | `INF-04` | Renvoie l'identifiant de la ressource courante | Fait (F-004) |
+| `FP-05` | Fonction `getReferenceKey([type])` | `S-FN` | `FP-04` | Vide si le type de la référence diffère ; réutilise `split-literal-ref` | Fait (F-004) |
+| `FP-06` | Fonctions `lowBoundary()` et `highBoundary()` | `S-FN` | `INF-04` | Dates partielles ; calcul propre au module sur les types `java.time` lus par Blaze (`date-time-lower-bound`/`-upper-bound` rendent des secondes d'époque, non réutilisables) | Fait (F-004) |
+| `FP-07` | Opérateur `or` | `S-OPR` | `INF-04` | Table de vérité à trois valeurs complète | Fait (F-004) |
+| `FP-08` | Opérateurs `<`, `<=`, `>`, `>=` | `S-OPR` | `INF-04` | Types compatibles comparés ; vide sinon | Fait (F-004) |
+| `FP-09` | Opérateurs arithmétiques `+`, `-`, `*`, `/` sur nombres | `S-OPR` | `INF-04` | `+` existant inchangé pour les chaînes ; division par zéro = vide | Fait (F-004) |
+| `FP-10` | Variable `$this` | `S-OPR` | `INF-04` | Utilisable dans `where($this ...)` | Fait (F-004) |
+| `FP-11` | Contexte de constantes `%nom` : nouvelle clé `:constants` et nouvelle arité d'`eval` | `S-OPR` | `INF-04` | L'arité utilisée par l'indexation est inchangée ; constante inconnue = anomalie | Fait (F-004) |
+| `FP-12` | Conversion des constantes typées : 18 types (hors `integer64`, F-004) | `S-OPR` | `FP-11` | Un test par type de constante | Fait (F-004) |
+| `FP-13` | Variable réservée `%rowIndex` | `S-OPR` | `FP-11` | Alimentable par le moteur ; absente hors `forEach` = vide | Fait (F-004) |
+| `FP-14` | Constructions non gérées : renvoyer une anomalie `unsupported` explicite au lieu de l'erreur générique | `S-OPR` | `INF-04` | Message nommant la construction ; test sur chaque catégorie de la grammaire | Fait (F-004) |
+| `FP-15` | **Porte J1** : lancer toute la suite de `modules/fhir-path` et `modules/db`, mesurer les expressions de la suite de conformité | `S-INF` | `FP-01` à `FP-14` | Tous les tests verts ; liste des expressions encore non évaluables | Fait (F-004) |
 
 ## J2 : Moteur de vue
 
@@ -260,26 +260,26 @@ Le moteur est une fonction pure dans le nouveau module ; il n'utilise ni `blaze.
 
 | Code | Opération | Stratégie | Dépend de | Critère propre | Statut |
 | --- | --- | --- | --- | --- | --- |
-| `VE-01` | Modèle de la vue et validation de structure : `resource`, `select`, `where`, `constant`, noms de colonnes | `S-PUR` | `INF-02`, `SPK-02` | Une vue mal formée donne une anomalie `incorrect` | À faire |
-| `VE-02` | Validation sémantique de la vue (fichier `validate`, 5 cas) | `S-PUR` | `VE-01` | 5 cas sur 5 | À faire |
-| `VE-03` | Compilation unique de chaque expression FHIRPath avec `fhir-path/compile` et réutilisation sur toutes les ressources | `S-PUR` | `VE-01`, `FP-15` | Aucune recompilation par ressource, vérifiée par un test | À faire |
-| `VE-04` | Clause `where` (8 cas) | `S-PUR` | `VE-03`, `FP-02`, `FP-07`, `FP-08` | 8 cas sur 8 | À faire |
-| `VE-05` | Colonnes simples et typage (fichiers `columns` et `basic`, 11 cas) | `S-PUR` | `VE-03` | 11 cas sur 11 | À faire |
-| `VE-06` | Colonnes `collection: true` (4 cas) | `S-PUR` | `VE-05` | 4 cas sur 4 ; plusieurs valeurs sans `collection` = anomalie | À faire |
-| `VE-07` | Expressions FHIRPath dans les colonnes (9 cas) | `S-PUR` | `VE-05`, `FP-01` à `FP-06` | 9 cas sur 9 | À faire |
-| `VE-08` | Combinaison de plusieurs `select` (produit des lignes, 6 cas) | `S-PUR` | `VE-05` | 6 cas sur 6 | À faire |
-| `VE-09` | `forEach` | `S-PUR` | `VE-08` | Cas `forEach` de la suite passés | À faire |
-| `VE-10` | `forEachOrNull` | `S-PUR` | `VE-09` | Les 13 cas de `forEach` et `forEachOrNull` passés au total | À faire |
-| `VE-11` | `repeat` (19 cas) | `S-PUR` | `VE-09` | 19 cas sur 19 ; arrêt sur cycle ou répétition | À faire |
-| `VE-12` | `unionAll` (10 cas) | `S-PUR` | `VE-08` | 10 cas sur 10 ; colonnes différentes = anomalie | À faire |
-| `VE-13` | Constantes de la vue (8 cas de vue plus 14 cas de fonctions) | `S-PUR` | `VE-03`, `FP-12` | 22 cas sur 22 | À faire |
-| `VE-14` | `%rowIndex` (9 cas) | `S-PUR` | `VE-09`, `FP-13` | 9 cas sur 9 | À faire |
-| `VE-15` | Contrôle du type de ressource ciblé (3 cas) | `S-PUR` | `VE-01` | 3 cas sur 3 | À faire |
-| `VE-16` | Représentation des nombres (1 cas) | `S-PUR` | `VE-05` | 1 cas sur 1 | À faire |
-| `VE-17` | Schéma de sortie : nom et type de chaque colonne, fourni aux sérialiseurs | `S-PUR` | `VE-05` | Schéma disponible avant la première ligne | À faire |
-| `VE-18` | Interface publique : fonction `run` ou transducteur appliqué à un flux de ressources | `S-PUR` | `VE-04`, `VE-10` | Utilisable sans base de données ; spécification avec `:ret` | À faire |
-| `VE-19` | Gestion des erreurs : toute erreur d'une ressource ou d'une vue devient une anomalie typée | `S-PUR` | `VE-18` | Aucune exception ne sort du module | À faire |
-| `VE-20` | **Porte J2** : exécuter la suite complète | `S-INF` | `VE-02` à `VE-19` | 144 cas sur 144 | À faire |
+| `VE-01` | Modèle de la vue et validation de structure : `resource`, `select`, `where`, `constant`, noms de colonnes | `S-PUR` | `INF-02`, `SPK-02` | Une vue mal formée donne une anomalie `incorrect` | Fait (F-005) |
+| `VE-02` | Validation sémantique de la vue (fichier `validate`, 5 cas) | `S-PUR` | `VE-01` | 5 cas sur 5 | Fait (F-005) |
+| `VE-03` | Compilation unique de chaque expression FHIRPath avec `fhir-path/compile` et réutilisation sur toutes les ressources | `S-PUR` | `VE-01`, `FP-15` | Aucune recompilation par ressource, vérifiée par un test | Fait (F-005) |
+| `VE-04` | Clause `where` (8 cas) | `S-PUR` | `VE-03`, `FP-02`, `FP-07`, `FP-08` | 8 cas sur 8 | Fait (F-005) |
+| `VE-05` | Colonnes simples et typage (fichiers `columns` et `basic`, 11 cas) | `S-PUR` | `VE-03` | 11 cas sur 11 | Fait (F-005) |
+| `VE-06` | Colonnes `collection: true` (4 cas) | `S-PUR` | `VE-05` | 4 cas sur 4 ; plusieurs valeurs sans `collection` = anomalie | Fait (F-005) |
+| `VE-07` | Expressions FHIRPath dans les colonnes (9 cas) | `S-PUR` | `VE-05`, `FP-01` à `FP-06` | 9 cas sur 9 | Fait (F-005) |
+| `VE-08` | Combinaison de plusieurs `select` (produit des lignes, 6 cas) | `S-PUR` | `VE-05` | 6 cas sur 6 | Fait (F-005) |
+| `VE-09` | `forEach` | `S-PUR` | `VE-08` | Cas `forEach` de la suite passés | Fait (F-005) |
+| `VE-10` | `forEachOrNull` | `S-PUR` | `VE-09` | Les 13 cas de `forEach` et `forEachOrNull` passés au total | Fait (F-005) |
+| `VE-11` | `repeat` (19 cas) | `S-PUR` | `VE-09` | 19 cas sur 19 ; arrêt sur cycle ou répétition | Fait (F-005) |
+| `VE-12` | `unionAll` (10 cas) | `S-PUR` | `VE-08` | 10 cas sur 10 ; colonnes différentes = anomalie | Fait (F-005) |
+| `VE-13` | Constantes de la vue (8 cas de vue plus 14 cas de fonctions) | `S-PUR` | `VE-03`, `FP-12` | 22 cas sur 22 | Fait (F-005) |
+| `VE-14` | `%rowIndex` (9 cas) | `S-PUR` | `VE-09`, `FP-13` | 9 cas sur 9 | Fait (F-005) |
+| `VE-15` | Contrôle du type de ressource ciblé (3 cas) | `S-PUR` | `VE-01` | 3 cas sur 3 | Fait (F-005) |
+| `VE-16` | Représentation des nombres (1 cas) | `S-PUR` | `VE-05` | 1 cas sur 1 | Fait (F-005) |
+| `VE-17` | Schéma de sortie : nom et type de chaque colonne, fourni aux sérialiseurs | `S-PUR` | `VE-05` | Schéma disponible avant la première ligne | Fait (F-005) |
+| `VE-18` | Interface publique : fonction `run` ou transducteur appliqué à un flux de ressources | `S-PUR` | `VE-04`, `VE-10` | Utilisable sans base de données ; spécification avec `:ret` | Fait (F-005) |
+| `VE-19` | Gestion des erreurs : toute erreur d'une ressource ou d'une vue devient une anomalie typée | `S-PUR` | `VE-18` | Aucune exception ne sort du module | Fait (F-005) |
+| `VE-20` | **Porte J2** : exécuter la suite complète | `S-INF` | `VE-02` à `VE-19` | 144 cas sur 144 | Fait (F-005) |
 
 ## J3 : Source de données et opération `$viewdefinition-run`
 
@@ -339,9 +339,9 @@ Option, hors de la présente livraison (ADR 0005, amendement du 2026-10-14) : le
 
 | Code | Opération | Stratégie | Dépend de | Critère propre | Statut |
 | --- | --- | --- | --- | --- | --- |
-| `SQ-01` | Exposer les vues comme tables pour le moteur SQL | `S-PUR` | `VE-20` | Une vue apparaît comme une table avec son schéma | À faire |
-| `SQ-02` | Moteur SQL embarqué pour `$sqlquery-run` (choix du moteur à décider d'abord) | `S-SPK` | `SQ-01` | Décision écrite, puis opérations dérivées créées | À faire |
-| `SQ-03` | Opération `$sqlquery-run` | `S-OPS` | `SQ-02`, `OP-07` | Une requête sur une vue renvoie les lignes attendues | À faire |
+| `SQ-01` | Exposer les vues comme tables pour le moteur SQL | `S-PUR` | `VE-20` | Une vue apparaît comme une table avec son schéma | En cours (F-039 : livré, à valider) |
+| `SQ-02` | Moteur SQL embarqué pour `$sqlquery-run` (choix du moteur à décider d'abord) | `S-SPK` | `SQ-01` | Décision écrite, puis opérations dérivées créées | En cours (F-039 : livré, à valider) |
+| `SQ-03` | Opération `$sqlquery-run` | `S-OPS` | `SQ-02`, `OP-07` | Une requête sur une vue renvoie les lignes attendues | En cours (F-039 : livré, à valider) |
 | `SQ-04` | Utilisation des index de Blaze pour accélérer les filtres des vues | `S-ADP` | `DS-08`, `TS-03` | Gain mesuré par `TS-03` | À faire |
 
 ## Consignes pour l'environnement multi-agents
@@ -419,16 +419,16 @@ Réponds ACCEPT ou REJECT. En cas de REJECT, liste chaque écart avec le fichier
 
 ## Suivi d'avancement
 
-L'orchestrateur met ce tableau à jour après chaque lot. Le plan compte 88 opérations.
+État au 2026-10-28 ; source des états : `docs/couverture.md` (tenu par `architect`). Le plan compte 88 opérations.
 
 | Jalon | Opérations | Codes | Faites | En cours | Bloquées | Porte de sortie franchie |
 | --- | --- | --- | --- | --- | --- | --- |
-| `J0` | 11 | `SPK-01` à `SPK-07`, `INF-01` à `INF-04` | 0 | 0 | 0 | sans objet |
-| `J1` | 15 | `FP-01` à `FP-15` | 0 | 0 | 0 | non |
-| `J2` | 20 | `VE-01` à `VE-20` | 0 | 0 | 0 | non |
-| `J3` | 24 | `DS-01` à `DS-08`, `OP-01` à `OP-11`, `SR-01` à `SR-03`, `SEC-01`, `TS-01` | 0 | 0 | 0 | non |
-| `J4` | 14 | `AS-01` à `AS-10`, `SR-04`, `SR-05`, `TS-02`, `TS-03` | 0 | 0 | 0 | non |
-| `J5` | 4 | `SQ-01` à `SQ-04` | 0 | 0 | 0 | non |
+| `J0` | 11 | `SPK-01` à `SPK-07`, `INF-01` à `INF-04` | 9 | 0 | 0 | sans objet |
+| `J1` | 15 | `FP-01` à `FP-15` | 15 | 0 | 0 | oui (T-014) |
+| `J2` | 20 | `VE-01` à `VE-20` | 20 | 0 | 0 | oui (T-023) |
+| `J3` | 24 | `DS-01` à `DS-08`, `OP-01` à `OP-11`, `SR-01` à `SR-03`, `SEC-01`, `TS-01` | 19 | 0 | 0 | non |
+| `J4` | 14 | `AS-01` à `AS-10`, `SR-04`, `SR-05`, `TS-02`, `TS-03` | 10 | 0 | 0 | oui (T-051) |
+| `J5` | 4 | `SQ-01` à `SQ-04` | 0 | 3 | 0 | non |
 
 **Journal des décisions.** L'orchestrateur y note, avec la date, chaque décision `SPK-xx` prise par la personne et chaque opération `Bloqué`.
 
@@ -460,7 +460,7 @@ Sept phases mènent de l'accord de conception à l'export Parquet, chacune avec 
 | 3. Exécution synchrone | `$viewdefinition-run` en NDJSON, CSV et JSON | Appel HTTP de bout en bout, CapabilityStatement à jour | API, sérialiseurs |
 | 4. Export asynchrone | `$viewdefinition-export`, tâches et fichiers de résultat | Export d'un jeu volumineux sans saturer la mémoire, avancement consultable | API asynchrone, gestion des exports |
 | 5. Parquet | Sérialiseur Parquet | Fichier relu par un outil d'analyse externe | Sérialiseurs |
-| 6. SQL (option) | `$sqlquery-run` avec un moteur SQL embarqué | Hors de la présente livraison, version ultérieure ; critère de reprise : ADR 0005, amendement du 2026-10-14 | Moteur SQL embarqué |
+| 6. SQL (option) | `$sqlquery-run` avec un moteur SQL embarqué | Repris par F-039 (ADR 0005, amendement du 2026-10-26 ; ADR 0014) : livré, à valider | Moteur SQL embarqué |
 
 ## Sources
 
