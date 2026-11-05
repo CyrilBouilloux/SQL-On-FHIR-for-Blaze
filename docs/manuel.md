@@ -27,7 +27,8 @@ Ce document s'adresse à qui veut savoir **où en est le projet** sans lire le c
   sur les données courantes, dans une base en mémoire ouverte puis fermée à chaque appel ; allumée
   par défaut, sans authentification. Usage, limites et paramètres : `README.md`, « Requêtes SQL sur
   les vues » ; décision, limites L1 à L18 et retrait : ADR 0014.
-- Les **écarts assumés à la spécification** SQL on FHIR sont réunis au §4.
+- Les **écarts assumés à la spécification** SQL on FHIR sont réunis au §4 ; les manques au regard
+  de la norme publiée 2.0.0, au §4 bis.
 
 ## 2. Ce qui existe, et comment le vérifier
 
@@ -43,10 +44,10 @@ Les commandes se lancent depuis la racine du dépôt. Celles du module demandent
 | Plafond de `_include` déclaré par le chart égal à celui de nginx | `python3 scripts/check_gardefou7.py` | `plafond _include = 5 (values.yaml = nginx.conf)` | identique, code 0, 2026-10-17 |
 | Image du module, construite **sur** l'image Blaze publiée, jar du module devant celui de Blaze | `make image` | code 0, image `blaze-platform-module:dev` | code 0, 2026-10-17 (copie du dossier publié, `IMAGE=` étiquette d'essai) |
 | L'image démarre et déclare les deux opérations du module | bloc `docker run` … `curl` du « Démarrage rapide » du `README.md` | `2` | `2`, 2026-10-17 ; sans les quatre variables `VIEWDEFINITION_EXPORT_*` : arrêt, code 1, `Assertion failed on key :blaze.job/viewdefinition-export` |
-| Fonctions et opérateurs FHIRPath ajoutés à Blaze (`join`, `lowBoundary`, `or`, `<`, `+`, `%rowIndex`, constantes typées…) ; fonctions de texte `startsWith`, `endsWith`, `contains`, `upper`, `lower`, `length`, `substring`, `indexOf`, `replace` et opérateurs `~`, `!~` (entrée vide → vide, `~` faux, `!~` vrai ; plusieurs éléments → 422 nommant fonction et cardinalité ; `matches`, `replaceMatches`, `trim`, `toChars` refusées en nommant la fonction). *Décidé, non mesuré* contre une implémentation de référence : `substring(start)` avec `start` égal à la longueur rend `''` ; `~` entre non-chaînes délègue à `=` de Blaze (décimaux non arrondis, sans la règle d'équivalence des dates) | `make -C modules/sql-on-fhir test` | `… 0 failures.` | `207 tests, 1618 assertions, 0 failures.`, code 0, 2026-10-17 |
+| Fonctions et opérateurs FHIRPath ajoutés à Blaze (`join`, `lowBoundary`, `or`, `<`, `+`, `%rowIndex`, constantes typées…) ; fonctions de texte `startsWith`, `endsWith`, `contains`, `upper`, `lower`, `length`, `substring`, `indexOf`, `replace` et opérateurs `~`, `!~` (entrée vide → vide, `~` faux, `!~` vrai ; plusieurs éléments → 422 nommant fonction et cardinalité ; `matches`, `replaceMatches`, `trim`, `toChars` refusées en nommant la fonction). *Décidé, non mesuré* contre une implémentation de référence : `substring(start)` avec `start` égal à la longueur rend `''` ; `~` entre non-chaînes délègue à `=` de Blaze (décimaux non arrondis, sans la règle d'équivalence des dates) | `make -C modules/sql-on-fhir test` | `… 0 failures.` | `249 tests, 2104 assertions, 0 failures.`, code 0, 2026-11-03 (`bench/baselines/T-126-n2/reprise/qualite.txt`) |
 | Moteur de vues en mémoire : la suite de conformité | `make -C modules/sql-on-fhir conformance` | `REUSSIS 144/144  ECHEC 0  NON-BRANCHE 0`, code 0 | identique, 2026-10-17 |
 | Le moteur n'a pas besoin de la base de Blaze | `make -C modules/sql-on-fhir independance` | `SUCCES`, code 0 | `SUCCES : REUSSIS 144/144  ECHEC 0  NON-BRANCHE 0 ; 0 namespace blaze.db / blaze.interaction chargé`, code 0, 2026-10-17 |
-| Requête SQL sur les vues (`$sqlquery-run`) : tables = vues, lignes et calculs égaux à `$viewdefinition-run`, paramètre lié, lecture seule, refus 400/404/422, plafonds de durée, de mémoire, de concurrence et de lignes, interrupteur | `bash tests/integration/test.sh IT-049 IT-050 IT-051 IT-052 IT-053 IT-054 IT-055 IT-056 IT-057 IT-058 IT-059 IT-060 IT-061` (banc kind, `scripts/banc.sh`) | `SYNTHESE` sans `echec` sur un banc dont les vues tiennent sous les plafonds par défaut ; passages à plafonds abaissés ou relevés : `docs/tests.md` §3 | `SYNTHESE cas=13 succes=26 echec=6 non-branche=1 total=33`, code 8, 2026-10-27 : les 6 échecs et le `NON-BRANCHE` sont les rouges attendus d'un banc dont la vue `observation` (168 981 lignes) dépasse les plafonds par défaut, verts à leurs passages dédiés (`bench/baselines/T-114/lancement4/`, `docs/tests.md` §3) |
+| Requête SQL sur les vues (`$sqlquery-run`) : tables = vues, lignes et calculs égaux à `$viewdefinition-run`, paramètre lié, lecture seule, refus 400/404/422, plafonds de durée, de mémoire, de concurrence et de lignes, interrupteur | `bash tests/integration/test.sh IT-049 IT-050 IT-051 IT-052 IT-053 IT-054 IT-055 IT-056 IT-057 IT-058 IT-059 IT-060 IT-061` (banc kind, `scripts/banc.sh`) | `SYNTHESE` sans `echec` sur un banc dont les vues tiennent sous les plafonds par défaut et dont les délais sont **ajustés au volume de données et à la machine** (`docs/tests.md`, « Délais du banc ») ; passages à plafonds abaissés ou relevés : `docs/tests.md` §3 | sur le banc kind à ses surcharges (`kubernetes/banc-local.yaml` : délais 120 s ×2 ; vues `observation` des cas bornées, F-046), au catalogue entier : IT-049…IT-056, IT-058…IT-061 verts, IT-057 `NON-BRANCHE` (son passage exige `delaiSecondes` ≤ 10 s), 2 essais sur 2, 2026-11-04 (`bench/baselines/F-046/06-`, `07-`) ; relevé antérieur, vues non bornées : `SYNTHESE cas=13 succes=26 echec=6 non-branche=1 total=33`, code 8, 2026-10-27 (`bench/baselines/T-114/lancement4/`) |
 | Couverture des tests du module | `make -C modules/sql-on-fhir test-coverage` | ligne `ALL FILES` ≥ 95 % | `ALL FILES` `95,32`, code 0, 2026-10-17 |
 
 Les opérations HTTP (`$viewdefinition-run`, `$viewdefinition-export`, `viewReference`) sont
@@ -97,6 +98,14 @@ Toutes ces limites sont admises et consignées dans `docs/couverture.md` §2 et 
   lisible par l'analyste.
 - **`$viewdefinition-run`, mémoire** : jusqu'à plafond + 1 lignes (10 001 par défaut) sont tenues en
   mémoire avant la première écrite ; aucun seuil de mémoire n'est mesuré.
+- **`$viewdefinition-run`, durée — paramétrage à réaliser** (F-048) : une exécution est bornée par
+  `VIEWDEFINITION_RUN_TIMEOUT_SECONDS` (clé `blaze.viewdefinitionRun.delaiSecondes`, défaut `30` s,
+  cohérent avec `$sqlquery-run`) ; au-delà, refus 422 `timeout`, jamais de réponse tronquée. Le `where`
+  d'une vue ne filtre qu'en mémoire : une vue `Observation` filtrée balaie tout le type et dépasse le
+  défaut (53,7 à 56,1 s sur 3 547 403 `Observation`). **À ajuster au volume de données et à la
+  machine**, sans reconstruire l'image : `docs/configuration.md`, « Limite de durée de
+  `$viewdefinition-run` » ; au-delà de 600 s, nginx coupe avant. `$viewdefinition-export` n'est pas
+  borné. Vérifié par `bash tests/integration/test.sh IT-067` (`docs/tests.md` §3).
 - **Export, tâche `ready` au moment d'un arrêt brutal** : elle reste `ready` ; la reprise ne la
   touche pas, et l'expiration ne purge que les tâches terminées. Le lieu de suivi pourrait alors
   rendre 202 sans fin ; le client l'annule par `DELETE`. *Décidé, non mesuré*.
@@ -136,6 +145,41 @@ du paquet `package.tgz` ; relues le 2026-10-13 ; pour `$sqlquery-run` (« sql »
 
 Écarts relevés mais **non tranchés** : paramètre 0..1 répété, documentation du
 `CapabilityStatement`.
+
+### 4 bis. Manques au regard de la norme publiée 2.0.0
+
+Référence : IG `org.sql-on-fhir.ig#2.0.0` (release du 2024-10-09, FHIR 5.0.0), copie hors ligne
+`docs/normes/sql-on-fhir-2.0.0/full-ig.zip` (URL dans `url.txt`), pages
+`StructureDefinition-ViewDefinition.html`, `…-ShareableViewDefinition.html`,
+`…-TabularViewDefinition.html`, `functional-model.html` ; relues le 2026-11-03 contre le code de
+`modules/sql-on-fhir/src/`. Le module vise `2.1.0-pre` : les opérations `$viewdefinition-run`,
+`$viewdefinition-export`, `$sqlquery-run` et `repeat` sont postérieures à la 2.0.0, hors de ce
+tableau. Le sous-ensemble FHIRPath exigé du profil Shareable et les deux fonctions obligatoires
+(`getResourceKey`, `getReferenceKey`) sont couverts. Les lignes 1 à 4 sont corrigées (F-041 à
+F-044) ; refus éprouvés le 2026-11-03 sur les vues des jeux de référence, en mémoire
+(`make -s -C modules/sql-on-fhir vue-ndjson VUE=<vue> RESSOURCES=<R>` → `incorrect : …`, `Error 8`)
+et par les opérations sur le banc kind (`tests/integration/test.sh IT-062 IT-063 IT-064 IT-065` →
+`SYNTHESE cas=4 succes=17 echec=0`, `bench/baselines/T-126-n2/` ; identique après la correction de
+revue de la ligne 4, `bench/baselines/T-126-n2/correction/`, et après sa reprise,
+`bench/baselines/T-126-n2/reprise/` ; `$sqlquery-run` : `tests/integration/test.sh IT-066` →
+`SYNTHESE cas=1 succes=7 echec=0` le 2026-11-04, `bench/baselines/T-129-n2/`).
+
+| # | Exigence 2.0.0 | Force | Ce que fait le module |
+|---|---|---|---|
+| 1 | Contrainte `sql-expressions` : un `select` porte au plus un de `forEach`, `forEachOrNull` | erreur | contrôlée : les deux présents, même d'expressions identiques, à toute profondeur → `incorrect` en mémoire, `422` `invalid` aux opérations (`view/validate.clj`) |
+| 2 | Contrainte `sql-name` sur `ViewDefinition.name` et `constant.name` | erreur | contrôlée sur `column.name`, `name` de vue (absent admis) et `constant.name` → `incorrect`, `422` `invalid` (`view/validate.clj`) |
+| 3 | `ViewDefinition.status` 1..1 (`draft`, `active`, `retired`, `unknown`) | cardinalité | valeur hors liste refusée en mémoire et par les trois opérations, `$sqlquery-run` compris (`view/validate.clj`) ; absence refusée (`422` `invalid`, aucune tâche) par `$viewdefinition-run`, en ligne et par `viewReference`, `$viewdefinition-export` (décision humaine du 2026-11-03) et `$sqlquery-run` pour chaque vue référencée par la `Library` SQLQuery (« view needs a `status` », avant l'ouverture de la base ; décision humaine du 2026-11-04) (`validate/require-status`, F-043 ; `bash bench/baselines/T-129-n2/sonde-sqlquery-status.sh` : S0 → `422`, SX → `422`, SD, SA, SR, SU → `200`, 2026-11-04) ; absence tolérée en mémoire seule (33 cas de la suite de conformité sans `status`) |
+| 4 | Branches d'`unionAll` de mêmes types (« MUST be of the same types ») | MUST | noms et ordre comparés ; à chaque position, les `type` **déclarés** de toutes les branches comparés entre eux (littéral, branches non consécutives comprises, à toute profondeur), une branche sans `type` à cette position non jugée (inférence absente, ligne 12) → `incorrect`, `422` `invalid` (`view/validate.clj` ; oracle du 2026-11-03 sur trois branches `id`, sans type, `boolean` → refus ; `unionAll` sans branche non jugé, servi : oracle `{}` code 0, opération `200` ; `bench/baselines/T-126-n2/reprise/oracle.txt`, `sonde.txt`) |
+| 5 | Constante `valueInteger64` | type du modèle | exclue, absente de R4 (ADR 0005) |
+| 6 | `lowBoundary` / `highBoundary` sur `Period` | expérimental (Shareable) | refusé, `incorrect` « non-date item » |
+| 7 | Bornes avec précision sur décimal, date-heure, heure | expérimental | `unsupported` ; bornes date-heure rendues en texte (§3) |
+| 8 | Ressources `contained` extraites en ressources autonomes | « requires » ; SHOULD pour le dédoublonnage | absent ; référence `#id` → vide (repli MUST respecté) |
+| 9 | Erreur si le type rendu diffère de `column.type` | should | non comparé ; toute valeur non primitive refusée (admis par la norme) |
+| 10 | Schéma de sortie offert à l'utilisateur (ex. `CREATE TABLE`) | SHOULD | calculé en interne (`view/schema.clj`), non exposé |
+| 11 | Indications de type par `tag` (`ansi/type`) | facultatif | ignorées |
+| 12 | Inférence du type de colonne depuis le chemin | facultatif | absente (DuckDB infère des valeurs) |
+| 13 | Profils Shareable (`url`, `name`, `fhirVersion`, `column.type` requis) et Tabular (ni collection, ni non primitif) | profils | non contrôlés ; `fhirVersion` non lu |
+| 14 | IG fondé sur FHIR 5.0.0 | contexte | serveur R4 (décision d'architecture) |
 
 ## 5. Ce qui n'existe pas encore
 

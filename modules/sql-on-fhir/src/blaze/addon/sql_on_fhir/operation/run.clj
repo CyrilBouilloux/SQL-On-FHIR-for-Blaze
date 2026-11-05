@@ -10,6 +10,7 @@
    [blaze.addon.sql-on-fhir.operation.sortie :as sortie]
    [blaze.addon.sql-on-fhir.serializer :as serializer]
    [blaze.addon.sql-on-fhir.view.compile :as compile]
+   [blaze.addon.sql-on-fhir.view.validate :as validate]
    [blaze.anomaly :as ba :refer [if-ok]]
    [blaze.async.comp :as ac]
    [blaze.module :as m]
@@ -20,7 +21,7 @@
    [taoensso.timbre :as log]))
 
 (defmethod m/pre-init-spec :blaze.addon.sql-on-fhir.operation.run/handler [_]
-  (s/keys :req-un [::max-rows]))
+  (s/keys :req-un [::max-rows ::timeout-seconds]))
 
 (defn- too-costly [max-rows]
   (ba/incorrect (format "The view yields more than %d rows, the maximum of this server." max-rows)
@@ -32,13 +33,16 @@
 (defn- run-view
   "Réponse (ou anomalie) de la requête : paramètres, vue compilée une fois, lignes lues sur la
   base de la requête avec `limit` = min(`_limit`, plafond + 1) ; plafond + 1 lignes = trop coûteux.
-  Une `viewReference` est résolue dans cette même base (F-011) ; ses refus portent leur statut."
-  [max-rows {:keys [body] :blaze/keys [db] query-format ::sortie/format accept-format ::sortie/accept-format}]
+  Une `viewReference` est résolue dans cette même base (F-011) ; ses refus portent leur statut.
+  F-048 : l'échéance (`timeout-seconds` après l'appel) est vérifiée à chaque paquet de ressources lu ;
+  dépassée, 422 `timeout`, jamais de réponse tronquée."
+  [max-rows timeout-seconds {:keys [body] :blaze/keys [db] query-format ::sortie/format accept-format ::sortie/accept-format}]
   (if-ok [{:keys [view limit] :as params} (if-ok [params (params/read-params body query-format accept-format)]
                                             (reference/resolve-entry db params)
                                             identity)]
-    (if-ok [compiled (compile/compile view)]
+    (if-ok [compiled (or (validate/require-status view) (compile/compile view))]
       (if-ok [rows (ds/rows compiled db (assoc (into {} (filter val) (select-keys params [:patient :group :since]))
+                                               :deadline (ds/deadline timeout-seconds)
                                                :limit (min (or limit (inc max-rows)) (inc max-rows))))]
         (if (> (count rows) max-rows)
           (too-costly max-rows)
@@ -47,10 +51,11 @@
       params/unprocessable)
     identity))
 
-(defmethod ig/init-key :blaze.addon.sql-on-fhir.operation.run/handler [_ {:keys [max-rows]}]
-  (log/info "Init FHIR $viewdefinition-run operation handler, max rows" max-rows)
+(defmethod ig/init-key :blaze.addon.sql-on-fhir.operation.run/handler [_ {:keys [max-rows timeout-seconds]}]
+  (log/info "Init FHIR $viewdefinition-run operation handler, max rows" max-rows
+            ", timeout seconds" timeout-seconds)
   (fn [request]
-    (ac/completed-future (run-view max-rows request))))
+    (ac/completed-future (run-view max-rows timeout-seconds request))))
 
 (defn- read-body [handler request]
   (if-let [body (:body request)]

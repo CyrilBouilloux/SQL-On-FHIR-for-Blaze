@@ -6,9 +6,27 @@
   (:require
    [blaze.addon.sql-on-fhir.view.run :as run]
    [blaze.anomaly :as ba :refer [if-ok]]
-   [blaze.db.api :as d]))
+   [blaze.db.api :as d])
+  (:import
+   [java.util.concurrent TimeUnit]))
 
 (set! *warn-on-reflection* true)
+
+(defn deadline
+  "Échéance (`System/nanoTime`) dans `seconds` secondes."
+  [seconds]
+  (+ (System/nanoTime) (.toNanos TimeUnit/SECONDS (long seconds))))
+
+(defn expired?
+  "Vrai si l'échéance `deadline` (`System/nanoTime`) est passée ; faux sans échéance."
+  [deadline]
+  (boolean (some-> deadline (< (System/nanoTime)))))
+
+(defn- timeout
+  "L'anomalie 422 `timeout`, la même que celle de `$sqlquery-run`."
+  []
+  (ba/incorrect "The query was interrupted: it exceeded the time limit of this server."
+                :http/status 422 :fhir/issue "timeout"))
 
 (defn- attendre
   "Valeur du future `f`, ou lance l'anomalie qui l'a fait échouer (à attraper par `try-anomaly`)."
@@ -68,12 +86,16 @@
 (defn resources
   "Ressources de `type` lues dans `db` (réductible, lecture à la demande), filtrées par
   `patient`, `group`, `since` (instant : `_lastUpdated=gt`) ; ou une anomalie (`not-found` si
-  le patient ou le groupe n'existe pas, `incorrect` si `since` n'est pas un instant)."
-  [db type {:keys [since] :as opts}]
+  le patient ou le groupe n'existe pas, `incorrect` si `since` n'est pas un instant). Avec
+  `deadline` (F-048), l'échéance est vérifiée avant chaque paquet : passée, la lecture lance
+  l'anomalie `timeout` 422 dans le réduit."
+  [db type {:keys [since deadline] :as opts}]
   (ba/try-anomaly
    (let [ids (patient-ids db opts)
          clauses (cond-> [] since (conj ["_lastUpdated" (str "gt" since)]))]
-     (eduction (comp (partition-all 100) (mapcat #(attendre (d/pull-many db %))))
+     (eduction (comp (partition-all 100)
+                     (map #(if (expired? deadline) (ba/throw-anom (timeout)) %))
+                     (mapcat #(attendre (d/pull-many db %))))
                (handles db type ids clauses)))))
 
 (defn resource-rows

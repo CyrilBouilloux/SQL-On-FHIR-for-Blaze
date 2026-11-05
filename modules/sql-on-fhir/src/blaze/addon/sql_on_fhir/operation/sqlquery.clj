@@ -19,6 +19,7 @@
    [blaze.addon.sql-on-fhir.sql.query :as query]
    [blaze.addon.sql-on-fhir.sql.tables :as tables]
    [blaze.addon.sql-on-fhir.view.compile :as compile]
+   [blaze.addon.sql-on-fhir.view.validate :as validate]
    [blaze.anomaly :as ba :refer [if-ok throw-anom when-ok]]
    [blaze.async.comp :as ac]
    [blaze.db.api :as d]
@@ -61,11 +62,11 @@
 
 (defn- table
   "`{:name :view :resources}` de la table `name` : la vue de la Library que désigne `canonical` dans
-  `db` (404 si aucune), compilée (422 si refusée), et ses ressources, lues avant `deadline`."
+  `db` (404 si aucune), compilée (422 si refusée, `status` absent compris : ADR 0015), et ses ressources, lues avant `deadline`."
   [db deadline {:keys [name canonical]}]
   (when-ok [view (let [v (reference/resolve-view db canonical)]
                    (cond-> v (ba/not-found? v) (assoc :http/status 404)))
-            compiled (if-ok [c (compile/compile view)] c params/unprocessable)
+            compiled (if-ok [c (or (validate/require-status view) (compile/compile view))] c params/unprocessable)
             resources (ds/resources db (:resource compiled) {})]
     {:name name :view compiled :resources (before-deadline deadline resources)}))
 

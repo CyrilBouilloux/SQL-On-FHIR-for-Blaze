@@ -58,6 +58,7 @@ spec:
             {{- if kindIs "float64" $p }}{{ if eq $p (floor $p) }}{{ $p = printf "%d" (int64 $p) }}{{ end }}{{ end }}
             {{- if not (regexMatch "^[1-9][0-9]*$" (toString $p)) }}{{ fail "blaze.viewdefinitionRun.plafondLignes : entier >= 1 attendu" }}{{ end }}
             - { name: VIEWDEFINITION_RUN_MAX_ROWS, value: {{ toString $p | quote }} }
+            - { name: VIEWDEFINITION_RUN_TIMEOUT_SECONDS, value: {{ include "blaze.entier" (dict "nom" "blaze.viewdefinitionRun.delaiSecondes" "v" $vr.delaiSecondes) | quote }} }
             {{- if not $vr.actif }}
             - { name: DISABLE_VIEWDEFINITION_RUN, value: "true" }
             {{- end }}

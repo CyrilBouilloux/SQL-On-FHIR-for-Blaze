@@ -13,6 +13,7 @@
    [blaze.addon.sql-on-fhir.operation.params :as params]
    [blaze.addon.sql-on-fhir.operation.reference :as reference]
    [blaze.addon.sql-on-fhir.view.compile :as compile]
+   [blaze.addon.sql-on-fhir.view.validate :as validate]
    [blaze.anomaly :as ba :refer [if-ok]]
    [blaze.async.comp :as ac]
    [blaze.db.api :as d]
@@ -31,7 +32,7 @@
   "Vues compilées de `views` (dans l'ordre), ou l'anomalie de la première refusée par le moteur."
   [views]
   (reduce (fn [acc {:keys [view]}]
-            (let [compiled (compile/compile view)]
+            (let [compiled (or (validate/require-status view) (compile/compile view))]
               (if (ba/anomaly? compiled) (reduced compiled) (conj acc compiled))))
           [] views))
 

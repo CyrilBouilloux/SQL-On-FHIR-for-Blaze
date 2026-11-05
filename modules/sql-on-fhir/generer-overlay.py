@@ -33,7 +33,8 @@ AJOUT = """
     :blaze.addon.sql-on-fhir.operation.run/raw-body {}
 
     :blaze.addon.sql-on-fhir.operation.run/handler
-    {:max-rows #blaze/cfg ["VIEWDEFINITION_RUN_MAX_ROWS" pos-int? 10000]}
+    {:max-rows #blaze/cfg ["VIEWDEFINITION_RUN_MAX_ROWS" pos-int? 10000]
+     :timeout-seconds #blaze/cfg ["VIEWDEFINITION_RUN_TIMEOUT_SECONDS" pos-int? 30]}
 
     :blaze.addon.sql-on-fhir.operation.sortie/app
     {:app #blaze/ref :blaze.handler/app}

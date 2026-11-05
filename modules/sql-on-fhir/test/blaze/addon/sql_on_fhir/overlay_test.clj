@@ -115,6 +115,12 @@
       (is (contains? c :blaze.addon.sql-on-fhir.operation.run/raw-body))
       (is (not (contains? (:blaze.addon.sql-on-fhir.operation.sortie/app c) :export-routes))))))
 
+(deftest viewdefinition-run-parametres
+  (testing "plafond de lignes et limite de durée de `$viewdefinition-run` (F-048)"
+    (given (config {})
+      [cle-run :max-rows] := {:cfg ["VIEWDEFINITION_RUN_MAX_ROWS" 'pos-int? 10000]}
+      [cle-run :timeout-seconds] := {:cfg ["VIEWDEFINITION_RUN_TIMEOUT_SECONDS" 'pos-int? 30]})))
+
 (deftest sqlquery-run-parametres
   (testing "noms, types et défauts des quatre réglages (ADR 0014, point 5) ; le plafond de lignes est celui de `$viewdefinition-run`"
     (given (config {})
@@ -160,6 +166,7 @@
 
 (def ^:private specs-des-composants
   {:blaze.addon.sql-on-fhir.operation.sqlquery/handler "blaze.addon.sql-on-fhir.operation.sqlquery"
+   :blaze.addon.sql-on-fhir.operation.run/handler "blaze.addon.sql-on-fhir.operation.run"
    :blaze.job/viewdefinition-export "blaze.addon.sql-on-fhir.export.job"
    :blaze.addon.sql-on-fhir.export.routes/handler "blaze.addon.sql-on-fhir.export.routes"
    :blaze.addon.sql-on-fhir.export.lifecycle/manager "blaze.addon.sql-on-fhir.export.lifecycle"})
@@ -207,13 +214,18 @@
                                   v ["0" "-1" "1.5" "abc"]]
                               [nom v])
                             (for [v ["256" "0MiB" "256 Mo" "1'; DROP" "MiB"]] ["SQLQUERY_RUN_MAX_MEMORY" v]))]
-      (is (= #{[cle-sqlquery (case nom
-                               "SQLQUERY_RUN_TIMEOUT_SECONDS" :timeout-seconds
-                               "SQLQUERY_RUN_MAX_CONCURRENT" :max-concurrent
-                               "VIEWDEFINITION_RUN_MAX_ROWS" :max-rows
-                               "SQLQUERY_RUN_MAX_MEMORY" :max-memory)]}
+      (is (= (cond-> #{[cle-sqlquery (case nom
+                                       "SQLQUERY_RUN_TIMEOUT_SECONDS" :timeout-seconds
+                                       "SQLQUERY_RUN_MAX_CONCURRENT" :max-concurrent
+                                       "VIEWDEFINITION_RUN_MAX_ROWS" :max-rows
+                                       "SQLQUERY_RUN_MAX_MEMORY" :max-memory)]}
+               (= nom "VIEWDEFINITION_RUN_MAX_ROWS") (conj [cle-run :max-rows]))
              (refuses (assoc env-valide nom v)))
           (str nom "=" (pr-str v)))))
+  (testing "`$viewdefinition-run` : la durée est un entier ≥ 1 (F-048)"
+    (doseq [v ["0" "-1" "1.5" "abc"]]
+      (is (= #{[cle-run :timeout-seconds]} (refuses (assoc env-valide "VIEWDEFINITION_RUN_TIMEOUT_SECONDS" v))) v))
+    (is (= #{} (refuses (assoc env-valide "VIEWDEFINITION_RUN_TIMEOUT_SECONDS" "120")))))
   (testing "une variable vide vaut variable absente : le défaut s'applique"
     (is (= #{} (refuses (assoc env-valide "SQLQUERY_RUN_TIMEOUT_SECONDS" "" "SQLQUERY_RUN_MAX_MEMORY" "")))))
   (testing "valeurs valides acceptées"

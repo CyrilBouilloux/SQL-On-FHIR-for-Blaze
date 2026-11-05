@@ -8,7 +8,16 @@
 (s/def ::ds/group string?)
 (s/def ::ds/since string?)
 (s/def ::ds/limit pos-int?)
-(s/def ::ds/opts (s/keys :opt-un [::ds/patient ::ds/group ::ds/since ::ds/limit]))
+(s/def ::ds/deadline int?)
+(s/def ::ds/opts (s/keys :opt-un [::ds/patient ::ds/group ::ds/since ::ds/limit ::ds/deadline]))
+
+(s/fdef ds/deadline
+  :args (s/cat :seconds pos-int?)
+  :ret int?)
+
+(s/fdef ds/expired?
+  :args (s/cat :deadline (s/nilable int?))
+  :ret boolean?)
 
 (s/fdef ds/resources
   :args (s/cat :db some? :type string? :opts ::ds/opts)

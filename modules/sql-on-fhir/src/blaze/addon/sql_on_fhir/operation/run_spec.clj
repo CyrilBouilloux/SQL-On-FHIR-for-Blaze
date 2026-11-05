@@ -3,3 +3,4 @@
    [clojure.spec.alpha :as s]))
 
 (s/def :blaze.addon.sql-on-fhir.operation.run/max-rows pos-int?)
+(s/def :blaze.addon.sql-on-fhir.operation.run/timeout-seconds pos-int?)

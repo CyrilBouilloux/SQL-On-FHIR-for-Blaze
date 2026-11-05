@@ -142,6 +142,27 @@
                   (is (= 250 (count (ds/rows v db {}))))
                   (is (= 3 @appels))))))
 
+(deftest echeance-pendant-la-lecture
+  (avec-noeud [noeud [[(patient "p1")] (mapv #(observation (str "o" %) "p1") (range 250))]]
+              (let [db (d/db noeud)
+                    v (vue "Observation" ["id"])
+                    passee (- (System/nanoTime) (* 1000 1000 1000))
+                    future (ds/deadline 60)]
+                (testing "échéance passée : anomalie `timeout` 422, jamais des lignes tronquées"
+                  (given (ds/rows v db {:deadline passee})
+                    ::anom/category := ::anom/incorrect
+                    :http/status := 422
+                    :fhir/issue := "timeout"))
+                (testing "échéance lointaine, ou absente : toutes les lignes"
+                  (is (= 250 (count (ds/rows v db {:deadline future}))))
+                  (is (= 250 (count (ds/rows v db {})))))
+                (testing "l'échéance est vérifiée par paquet : la lecture s'arrête au premier paquet"
+                  (let [appels (atom 0)
+                        pull-many d/pull-many]
+                    (with-redefs [d/pull-many (fn [& args] (swap! appels inc) (apply pull-many args))]
+                      (ds/rows v db {:deadline passee})
+                      (is (zero? @appels))))))))
+
 (deftest instant-coherent
   (avec-noeud [noeud jeu]
               (let [db (d/db noeud)

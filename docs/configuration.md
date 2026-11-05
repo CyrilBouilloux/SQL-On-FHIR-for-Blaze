@@ -17,7 +17,7 @@
 | Versions servies par le chart | `kubernetes/chart/values-versions.yaml`, `Chart.yaml` | Helm | **dérivés** par `kubernetes/chart/deriver.sh`, jamais édités ni versionnés |
 | Paramètres de la livraison : namespace, images, URL publique, tas JVM, volume, exposition, ressources, `NetworkPolicy` | `kubernetes/chart/values.yaml` | Helm | une ligne par clé : « Clés de `kubernetes/chart/values.yaml` » ; variables Blaze supplémentaires : clé `blaze.env` |
 | Image servie par le chart (module) | dépôt : `kubernetes/chart/values.yaml` (`image.blaze.repository`) ; étiquette : `image.blaze.tag`, **sans défaut** (le chart refuse de se rendre sans elle) | Helm | à poser au déploiement : version `BLAZE_VERSION` de `versions.env` + 12 premiers hexadécimaux de l'identifiant de l'image `make image` (bloc « Déployer » du `README.md`) ; `latest` refusé ; sans `image.blaze.registry` : image locale `<repository>:<tag>`, sans empreinte ; avec `image.blaze.registry` : `image.blaze.digest` (`sha256:<64 hexadécimaux>`) **obligatoire**, image `<registry>/<repository>:<tag>@<digest>` ; nginx : toujours `@sha256:` dérivé de `versions.env` |
-| `$viewdefinition-run` : plafond de lignes, interrupteur | `kubernetes/chart/values.yaml` (`blaze.viewdefinitionRun.plafondLignes`, `blaze.viewdefinitionRun.actif`) | Helm → variables `VIEWDEFINITION_RUN_MAX_ROWS`, `DISABLE_VIEWDEFINITION_RUN` (posée seulement si `actif: false`) | refusés par le chart (`fail`, rc 1) : `actif` non booléen (à passer par `--set`, jamais `--set-string`), plafond autre qu'un entier ≥ 1 sans zéro de tête ; lues par l'overlay généré `modules/sql-on-fhir/resources/blaze.edn` (`modules/sql-on-fhir/generer-overlay.py`) ; au-delà du plafond, refus 422 `too-costly` |
+| `$viewdefinition-run` : plafond de lignes, limite de durée, interrupteur | `kubernetes/chart/values.yaml` (`blaze.viewdefinitionRun.plafondLignes`, `blaze.viewdefinitionRun.delaiSecondes`, `blaze.viewdefinitionRun.actif`) | Helm → variables `VIEWDEFINITION_RUN_MAX_ROWS`, `VIEWDEFINITION_RUN_TIMEOUT_SECONDS` (toujours posées), `DISABLE_VIEWDEFINITION_RUN` (posée seulement si `actif: false`) | refusés par le chart (`fail`, rc 1) : `actif` non booléen (à passer par `--set`, jamais `--set-string`), plafond ou durée autre qu'un entier ≥ 1 sans zéro de tête ; durée par défaut 30 s, au-delà refus 422 `timeout`, **à ajuster au volume de données et à la machine** (« Limite de durée de `$viewdefinition-run` » ci-dessous) ; lues par l'overlay généré `modules/sql-on-fhir/resources/blaze.edn` (`modules/sql-on-fhir/generer-overlay.py`) ; au-delà du plafond, refus 422 `too-costly` |
 | `$sqlquery-run` : interrupteur, plafonds de durée, de mémoire, de concurrence (options de mise en route) | `kubernetes/chart/values.yaml` (`blaze.sqlqueryRun.{actif,delaiSecondes,plafondMemoire,plafondSimultanees}`) | Helm → `DISABLE_SQLQUERY_RUN` (posée seulement si `actif: false`), `SQLQUERY_RUN_TIMEOUT_SECONDS`, `SQLQUERY_RUN_MAX_MEMORY`, `SQLQUERY_RUN_MAX_CONCURRENT` (toujours posées) | refusés par le chart (`fail`, rc 1) : `actif` non booléen, `delaiSecondes` ou `plafondSimultanees` autre qu'un entier ≥ 1, `plafondMemoire` sans unité (`KB`…`TiB`) ; lues par l'overlay généré `modules/sql-on-fhir/resources/blaze.edn` ; le plafond de lignes est celui de `$viewdefinition-run` (`VIEWDEFINITION_RUN_MAX_ROWS`, `blaze.viewdefinitionRun.plafondLignes`) : il s'applique aussi à `$sqlquery-run`, aucun paramètre neuf ; pas de reconstruction de l'image pour les changer |
 | `$viewdefinition-export` : interrupteur, dossier, plafond d'octets, conservation, période de nettoyage, volume | `kubernetes/chart/values.yaml` (`blaze.viewdefinitionExport.*`) | Helm → `VIEWDEFINITION_EXPORT_DIR`, `_MAX_BYTES`, `_RETENTION_SECONDS`, `_CLEANUP_PERIOD_SECONDS` (toujours posées), `DISABLE_VIEWDEFINITION_EXPORT=true` (seulement si `actif: false`) ; PVC `<release>-export` (`kubernetes/chart/templates/export-pvc.yaml`) monté sur `dossier`, rendu dans les deux états | refusés par le chart (`fail`, rc 1) : `actif` non booléen, `dossier` non absolu ou sous `/app/data` ou `/tmp`, entier autre que ≥ 1, `stockage.taille` non entière ; `DISABLE_VIEWDEFINITION_EXPORT=false` (et `DISABLE_VIEWDEFINITION_RUN=false`) se pose par `blaze.env` ; le PVC survit à `helm uninstall` (`helm.sh/resource-policy: keep`), il se supprime à la main |
 | Plafond `_include` / `_revinclude` | déclaré : `kubernetes/chart/values.yaml` (`proxy.plafondInclude`) ; appliqué : `nginx/nginx.conf` | nginx | les deux doivent coïncider : `python3 scripts/check_gardefou7.py` |
@@ -28,6 +28,23 @@
 
 Absents à ce jour : `blaze/search-parameters.json` (aucun paramètre ajouté), réglage du
 validateur et d'OpenID — aucun n'est déployé (`docs/architecture.md`, « Architecture cible »).
+
+### Limite de durée de `$viewdefinition-run`
+
+Paramétrage **à réaliser par l'exploitant** (F-048) : la limite se règle au volume de données et à
+la machine, sans reconstruire l'image (`scripts/banc.sh redeployer --set
+blaze.viewdefinitionRun.delaiSecondes=<s>` sur le banc, `helm upgrade --set …` ailleurs). Défaut
+repris de `kubernetes/chart/values.yaml`, qui fait foi.
+
+| Paramètre | Variable | Clé de chart | Défaut | Effet | Quand le réviser |
+|---|---|---|---|---|---|
+| Limite de durée | `VIEWDEFINITION_RUN_TIMEOUT_SECONDS` | `blaze.viewdefinitionRun.delaiSecondes` | `30` | échéance vérifiée avant chaque paquet de 100 ressources lues ; dépassée, 422 `timeout` (`OperationOutcome`, même refus que `$sqlquery-run`), jamais de `200` tronqué ; mesuré à 10 s : 422 en 10,03 s, 3 essais sur 3 ; à 120 s : 200, 5 340 lignes, 49,1 à 50,1 s (`bench/baselines/F-048/`, 2026-11-04) ; `$viewdefinition-export` n'est pas borné | **à ajuster au volume de données et à la machine** : une vue `Observation` filtrée balaie tout le type (53,7 à 56,1 s sur 3 547 403 `Observation`, `bench/baselines/T-133/mesures-run.txt`) et sort en 422 au défaut ; défaut 30 s par cohérence avec `SQLQUERY_RUN_TIMEOUT_SECONDS`, sous les 600 s de `proxy_read_timeout` (`nginx/nginx.conf`) ; au-delà de 600 s, nginx coupe avant Blaze |
+
+**Sur le banc kind** (F-046) : `blaze.viewdefinitionRun.delaiSecondes` et `blaze.sqlqueryRun.delaiSecondes`
+y sont surchargées à 120 s par `kubernetes/banc-local.yaml`, qui fait foi (vues bornées des cas : `run`
+48,7 à 56,1 s, `$sqlquery-run` 50,3 s au plus, `bench/baselines/T-139/` ; 66 à 100 s constatés le 2026-11-05, ralentissement suivi en F-049) ; les attentes côté cas
+(`IT_TIMEOUT`, `IT_ATTENTE_EXPORT`) sont dans `tests/integration/test.sh`. Inventaire des délais du banc,
+**à ajuster au volume de données et à la machine** : `docs/banc.md` et `docs/tests.md` (« Délais du banc »).
 
 ### Options de mise en route de `$sqlquery-run`
 
@@ -86,6 +103,7 @@ toute autre se pose par la clé `blaze.env`. Sans `docker run -e` ni chart, une 
 | `VIEWDEFINITION_EXPORT_CLEANUP_PERIOD_SECONDS` | période du nettoyage des exports expirés, en secondes, entier ≥ 1 | aucun défaut — **exigée** ; chart : `blaze.viewdefinitionExport.periodeNettoyageSecondes` |
 | `DISABLE_VIEWDEFINITION_EXPORT` | interrupteur inverse : `true` éteint `$viewdefinition-export`, et les quatre variables ci-dessus ne sont plus exigées | absent : opération allumée |
 | `VIEWDEFINITION_RUN_MAX_ROWS` | plafond de lignes rendues par `$viewdefinition-run` **et par `$sqlquery-run`** (aucun paramètre neuf) ; au-delà, 422 `too-costly` | `10000` |
+| `VIEWDEFINITION_RUN_TIMEOUT_SECONDS` | durée maximale d'une exécution de `$viewdefinition-run`, puis interrompue, 422 `timeout` (`OperationOutcome`, jamais de `200` tronqué) ; entier ≥ 1 ; `$viewdefinition-export` n'est pas borné par elle ; à ajuster au volume de données et à la machine (« Limite de durée de `$viewdefinition-run` ») | `30` |
 | `DISABLE_VIEWDEFINITION_RUN` | interrupteur inverse : `true` éteint `$viewdefinition-run` | absent : opération allumée |
 | `DISABLE_SQLQUERY_RUN` | interrupteur inverse : `true` éteint `$sqlquery-run` (déclaration retirée de `/fhir/metadata`, appel refusé) | absent : opération allumée |
 | `SQLQUERY_RUN_TIMEOUT_SECONDS` | durée maximale d'une requête de `$sqlquery-run`, chargement des vues en tables compris puis exécution SQL (échéance unique) ; au-delà, interrompue, 422 `timeout` ; l'échéance pouvant tomber en fin de chargement, la réponse peut être servie en `200` malgré le dépassement (ADR 0014, L3) ; entier ≥ 1 ; plafond de protection, non de précision : dépassement possible jusqu'à 5 s (ADR 0014, L3) ; à ajuster au volume de données et à la machine (30 s pour le jeu de référence ; au-delà de 600 s nginx coupe avant Blaze, `proxy_read_timeout` de `nginx/nginx.conf`, ADR 0014 L4, à mesurer : régler aussi nginx ; la requête sur la vue observation de 168 981 lignes a duré de 72,0 à 100,1 s, relevés de `bench/baselines/T-116/iter2/`) | `30` |
@@ -224,6 +242,7 @@ Défaut : `kubernetes/chart/values.yaml`, qui fait foi ; se change par `-f` ou `
 | `blaze.env` | variables Blaze supplémentaires, nom → valeur | vide |
 | `blaze.viewdefinitionRun.actif` | `false` pose `DISABLE_VIEWDEFINITION_RUN=true` ; booléen | `true` |
 | `blaze.viewdefinitionRun.plafondLignes` | → `VIEWDEFINITION_RUN_MAX_ROWS` ; entier ≥ 1 ; s'applique aussi à `$sqlquery-run` | `10000` |
+| `blaze.viewdefinitionRun.delaiSecondes` | → `VIEWDEFINITION_RUN_TIMEOUT_SECONDS` : durée maximale d'une exécution de `$viewdefinition-run`, puis 422 `timeout` ; entier ≥ 1 ; à ajuster au volume de données et à la machine (« Limite de durée de `$viewdefinition-run` ») | `30` |
 | `blaze.sqlqueryRun.actif` | `false` pose `DISABLE_SQLQUERY_RUN=true` ; booléen ; option de mise en route | `true` |
 | `blaze.sqlqueryRun.delaiSecondes` | → `SQLQUERY_RUN_TIMEOUT_SECONDS` : durée maximale de la requête, chargement des vues compris, dépassement possible en fin de chargement (ADR 0014 L3) ; entier ≥ 1 ; option de mise en route ; plafond de protection, non de précision : dépassement possible jusqu'à 5 s (ADR 0014, L3) ; à ajuster au volume de données et à la machine (30 s pour le jeu de référence ; la requête sur la vue observation de 168 981 lignes a duré de 72,0 à 100,1 s, relevés de `bench/baselines/T-116/iter2/`) | `30` |
 | `blaze.sqlqueryRun.plafondMemoire` | → `SQLQUERY_RUN_MAX_MEMORY` : mémoire du moteur hors tas ; entier + unité ; option de mise en route | `256MiB` |
@@ -260,7 +279,7 @@ Défaut : `kubernetes/chart/values.yaml`, qui fait foi ; se change par `-f` ou `
 | Versions served by the chart | `kubernetes/chart/values-versions.yaml`, `Chart.yaml` | Helm | **derived** by `kubernetes/chart/deriver.sh`, never edited nor committed |
 | Delivery parameters: namespace, images, public URL, JVM heap, volume, exposure, resources, `NetworkPolicy` | `kubernetes/chart/values.yaml` | Helm | one row per key: "Keys of `kubernetes/chart/values.yaml`"; extra Blaze variables: key `blaze.env` |
 | Image served by the chart (module) | `image.blaze.*` of `kubernetes/chart/values.yaml`; `image.blaze.tag` has **no default** | Helm | set at deployment time (French "Déployer" block of `README.md`); `latest` refused; no registry: local image `<repository>:<tag>`; with `image.blaze.registry`: `image.blaze.digest` **mandatory**, image `<registry>/<repository>:<tag>@<digest>`; nginx: always `@sha256:` derived from `versions.env` |
-| `$viewdefinition-run` and `$viewdefinition-export` | `blaze.viewdefinitionRun.*`, `blaze.viewdefinitionExport.*` of `kubernetes/chart/values.yaml` | Helm → `VIEWDEFINITION_*`, `DISABLE_VIEWDEFINITION_*` variables; export PVC `<release>-export` | invalid values refused by the chart (`fail`, rc 1); the export PVC survives `helm uninstall` |
+| `$viewdefinition-run` and `$viewdefinition-export` | `blaze.viewdefinitionRun.*`, `blaze.viewdefinitionExport.*` of `kubernetes/chart/values.yaml` | Helm → `VIEWDEFINITION_*`, `DISABLE_VIEWDEFINITION_*` variables; export PVC `<release>-export` | invalid values refused by the chart (`fail`, rc 1); the export PVC survives `helm uninstall`; `$viewdefinition-run` duration limit `blaze.viewdefinitionRun.delaiSecondes` → `VIEWDEFINITION_RUN_TIMEOUT_SECONDS`, default 30 s, beyond it 422 `timeout`, **to be adjusted to the data volume and the machine** ("Duration limit of `$viewdefinition-run`" below) |
 | `$sqlquery-run` (switch and caps on duration, memory and concurrency: start-up options) | `blaze.sqlqueryRun.{actif,delaiSecondes,plafondMemoire,plafondSimultanees}` of `kubernetes/chart/values.yaml` | Helm → `DISABLE_SQLQUERY_RUN` (only if `actif: false`), `SQLQUERY_RUN_TIMEOUT_SECONDS`, `SQLQUERY_RUN_MAX_MEMORY`, `SQLQUERY_RUN_MAX_CONCURRENT` (always set) | invalid values refused by the chart (`fail`, rc 1); the row cap is the one of `$viewdefinition-run` (`VIEWDEFINITION_RUN_MAX_ROWS`): it also applies to `$sqlquery-run`; no image rebuild to change them |
 | `_include` / `_revinclude` cap | declared: `kubernetes/chart/values.yaml` (`proxy.plafondInclude`); enforced: `nginx/nginx.conf` | nginx | both must match: `python3 scripts/check_gardefou7.py` |
 | Script exit codes | `lib/codes.sh` | scripts of `build/`, `scripts/`, `kubernetes/` | single table |
@@ -270,6 +289,24 @@ Défaut : `kubernetes/chart/values.yaml`, qui fait foi ; se change par `-f` ou `
 
 Not present yet: `blaze/search-parameters.json` (no added search parameter), validator and
 OpenID settings — none is deployed (`docs/architecture.md`, "Architecture cible").
+
+### Duration limit of `$viewdefinition-run`
+
+A setting **for the operator to make** (F-048): tune the limit to the data volume and the machine,
+without rebuilding the image (`scripts/banc.sh redeployer --set
+blaze.viewdefinitionRun.delaiSecondes=<s>` on the test bench, `helm upgrade --set …` elsewhere).
+Default from `kubernetes/chart/values.yaml`, which is authoritative.
+
+| Setting | Variable | Chart key | Default | Effect | When to revise |
+|---|---|---|---|---|---|
+| Duration limit | `VIEWDEFINITION_RUN_TIMEOUT_SECONDS` | `blaze.viewdefinitionRun.delaiSecondes` | `30` | deadline checked before each batch of 100 resources read; once passed, 422 `timeout` (`OperationOutcome`, the same refusal as `$sqlquery-run`), never a truncated `200`; measured at 10 s: 422 in 10.03 s, 3 trials out of 3; at 120 s: 200, 5,340 rows, 49.1 to 50.1 s (`bench/baselines/F-048/`, 2026-11-04); `$viewdefinition-export` is not bounded | **adjust it to the data volume and the machine**: a filtered `Observation` view scans the whole type (53.7 to 56.1 s over 3,547,403 `Observation`, `bench/baselines/T-133/mesures-run.txt`) and leaves with 422 at the default; default 30 s for consistency with `SQLQUERY_RUN_TIMEOUT_SECONDS`, below nginx's 600 s `proxy_read_timeout` (`nginx/nginx.conf`); beyond 600 s, nginx cuts before Blaze |
+
+**On the kind test bench** (F-046): `blaze.viewdefinitionRun.delaiSecondes` and
+`blaze.sqlqueryRun.delaiSecondes` are overridden to 120 s by `kubernetes/banc-local.yaml`, which is
+authoritative (bounded case views: `run` 48.7 to 56.1 s, `$sqlquery-run` at most 50.3 s,
+`bench/baselines/T-139/`; 66 to 100 s observed on 2026-11-05, slowdown tracked in F-049); the client-side waits (`IT_TIMEOUT`, `IT_ATTENTE_EXPORT`) live in
+`tests/integration/test.sh`. Inventory of the bench timeouts, **to be adjusted to the data volume and the
+machine**: `docs/banc.md` and `docs/tests.md` ("Délais du banc").
 
 ### Start-up options of `$sqlquery-run`
 
@@ -323,6 +360,7 @@ configures is inactive, unless marked "required".
 | `VIEWDEFINITION_EXPORT_CLEANUP_PERIOD_SECONDS` | period of the expired-export cleanup, in seconds, integer ≥ 1 | no default — **required**; chart: `blaze.viewdefinitionExport.periodeNettoyageSecondes` |
 | `DISABLE_VIEWDEFINITION_EXPORT` | inverse switch: `true` turns `$viewdefinition-export` off, and the four variables above are no longer required | absent: operation on |
 | `VIEWDEFINITION_RUN_MAX_ROWS` | cap on rows returned by `$viewdefinition-run` **and by `$sqlquery-run`** (no new parameter); beyond, 422 `too-costly` | `10000` |
+| `VIEWDEFINITION_RUN_TIMEOUT_SECONDS` | maximum duration of a `$viewdefinition-run` execution, then interrupted, 422 `timeout` (`OperationOutcome`, never a truncated `200`); integer ≥ 1; `$viewdefinition-export` is not bounded by it; adjust it to the data volume and the machine ("Duration limit of `$viewdefinition-run`") | `30` |
 | `DISABLE_VIEWDEFINITION_RUN` | inverse switch: `true` turns `$viewdefinition-run` off | absent: operation on |
 | `DISABLE_SQLQUERY_RUN` | inverse switch: `true` turns `$sqlquery-run` off (declaration removed from `/fhir/metadata`, call refused) | absent: operation on |
 | `SQLQUERY_RUN_TIMEOUT_SECONDS` | maximum duration of a `$sqlquery-run` query, view loading included; beyond, interrupted, 422 `timeout`; the deadline may fall at the end of view loading, so the answer may be served `200` despite the overrun (ADR 0014, L3); integer ≥ 1; protection cap, not a precision cap: an overrun of up to 5 s is possible (ADR 0014, L3); adjust it to the data volume and the machine (30 s for the reference set; beyond 600 s nginx cuts first, `proxy_read_timeout` in `nginx/nginx.conf`, ADR 0014 L4, to be measured: tune nginx too; a query on the 168,981-row observation view took 72.0 to 100.1 s, readings in `bench/baselines/T-116/iter2/`) | `30` |
@@ -460,6 +498,7 @@ Domain (c) of F-034: `35` leaf keys (command in the French section). Default:
 | `blaze.env` | extra Blaze variables, name → value | empty |
 | `blaze.viewdefinitionRun.actif` | `false` sets `DISABLE_VIEWDEFINITION_RUN=true`; boolean | `true` |
 | `blaze.viewdefinitionRun.plafondLignes` | → `VIEWDEFINITION_RUN_MAX_ROWS`; integer ≥ 1; also applies to `$sqlquery-run` | `10000` |
+| `blaze.viewdefinitionRun.delaiSecondes` | → `VIEWDEFINITION_RUN_TIMEOUT_SECONDS`: maximum duration of a `$viewdefinition-run` execution, then 422 `timeout`; integer ≥ 1; adjust it to the data volume and the machine ("Duration limit of `$viewdefinition-run`") | `30` |
 | `blaze.sqlqueryRun.actif` | `false` sets `DISABLE_SQLQUERY_RUN=true`; boolean; start-up option | `true` |
 | `blaze.sqlqueryRun.delaiSecondes` | → `SQLQUERY_RUN_TIMEOUT_SECONDS`: maximum duration of a query; integer ≥ 1; start-up option; protection cap, not a precision cap: an overrun of up to 5 s is possible (ADR 0014, L3); adjust it to the data volume and the machine (30 s for the reference set; a query on the 168,981-row observation view took 72.0 to 100.1 s, readings in `bench/baselines/T-116/iter2/`) | `30` |
 | `blaze.sqlqueryRun.plafondMemoire` | → `SQLQUERY_RUN_MAX_MEMORY`: off-heap engine memory; integer + unit; start-up option | `256MiB` |

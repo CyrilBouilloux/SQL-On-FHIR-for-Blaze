@@ -60,10 +60,10 @@
 
 (defn- base64 [s] (.encodeToString (Base64/getEncoder) (.getBytes ^String s "UTF-8")))
 
-(defn- vue-rangee [id]
+(defn- vue-rangee [id & [une-vue]]
   [:put (lire {:resourceType "Library" :id id :url url-vue :version "1.0.0" :status "active"
                :type {:coding [{:system "http://terminology.hl7.org/CodeSystem/library-type" :code "asset-collection"}]}
-               :content [{:contentType "application/json" :data (base64 (j/write-value-as-string (assoc vue :url url-vue :version "1.0.0")))}]})])
+               :content [{:contentType "application/json" :data (base64 (j/write-value-as-string (assoc (or une-vue vue) :url url-vue :version "1.0.0")))}]})])
 
 (defn- library
   "Library SQLQuery JSON : `sql`, la table `patient` (vue rangée), paramètres déclarés `declared`."
@@ -145,6 +145,32 @@
                       (given (erreur handler {:blaze/db db :body {:resourceType "Parameters"
                                                                   :parameter [{:name "queryReference" :valueReference {:reference "Patient/p1"}}]}})
                         :http/status := 400))))))
+
+(deftest status-exige
+  (let [sql "SELECT count(*) AS n FROM patient"
+        essai (fn [vue-a-ranger]
+                (avec-handler config [[(patient "p1" "female") (patient "p2" "male") (vue-rangee "v1" vue-a-ranger)]]
+                              (fn [handler db node]
+                                (let [avant (compte node "Patient")
+                                      f (handler (requete db (library sql)))
+                                      r (try {:ok @f} (catch java.util.concurrent.ExecutionException e {:erreur (ex-data (.getCause e))}))]
+                                  (assert (= avant (compte node "Patient")))
+                                  r))))]
+    (testing "absent : 422 invalid, diagnostics sur status"
+      (given (:erreur (essai (dissoc vue :status)))
+        ::anom/category := ::anom/incorrect
+        :http/status := 422
+        [::anom/message #(str/includes? (str %) "status")] := true))
+    (testing "hors liste : 422, status et brouillon"
+      (given (:erreur (essai (assoc vue :status "brouillon")))
+        ::anom/category := ::anom/incorrect
+        :http/status := 422
+        [::anom/message #(and (str/includes? (str %) "status") (str/includes? (str %) "brouillon"))] := true))
+    (doseq [st ["draft" "active" "retired" "unknown"]]
+      (testing st
+        (given (:ok (essai (assoc vue :status st)))
+          :status := 200
+          lignes := [{:n 2}])))))
 
 (deftest refus
   (avec-handler config trois

@@ -1,0 +1,1 @@
+https://sql-on-fhir.org/ig/2.0.0/full-ig.zip

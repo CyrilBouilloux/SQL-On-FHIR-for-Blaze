@@ -1,6 +1,7 @@
 (ns blaze.addon.sql-on-fhir.operation.run-test
   "IB-08 : composants de l'opération `$viewdefinition-run` (corps brut, handler, plafond)."
   (:require
+   [blaze.addon.sql-on-fhir.data-source :as ds]
    [blaze.addon.sql-on-fhir.noeud :as noeud]
    [blaze.addon.sql-on-fhir.operation.run]
    [blaze.addon.sql-on-fhir.operation.run-spec]
@@ -32,7 +33,8 @@
 
 (deftest handler-init
   (testing "plafond absent ou non entier positif"
-    (doseq [cfg [{} {:max-rows 0} {:max-rows "10"}]]
+    (doseq [cfg [{} {:max-rows 0} {:max-rows "10"} {:max-rows 10} {:max-rows 10 :timeout-seconds 0}
+                 {:max-rows 10 :timeout-seconds "30"}]]
       (given-thrown (ig/init {cle-handler cfg})
         :message := "Assertion failed on key :blaze.addon.sql-on-fhir.operation.run/handler when building system"))))
 
@@ -65,7 +67,7 @@
   [max-rows txs f]
   (let [systeme (noeud/demarrer)
         node (:blaze.db/node systeme)
-        handler (ig/init-key cle-handler {:max-rows max-rows})]
+        handler (ig/init-key cle-handler {:max-rows max-rows :timeout-seconds 30})]
     (try
       (run! #(noeud/ecrire! node %) txs)
       (f handler (d/db node))
@@ -109,6 +111,19 @@
                   (given-failed-future (handler (requete db vue-patient [{:name "source" :valueString "s"}]))
                     ::anom/category := ::anom/unsupported
                     :http/status := 400))))
+
+(deftest handler-echeance
+  (avec-handler 10 trois-patients
+                (fn [handler db]
+                  (testing "échéance dépassée pendant la lecture : 422 `timeout`, pas de 200"
+                    (with-redefs [ds/deadline (fn [_] (- (System/nanoTime) 1000000000))]
+                      (given-failed-future (handler (requete db vue-patient []))
+                        ::anom/category := ::anom/incorrect
+                        :http/status := 422
+                        :fhir/issue := "timeout")))
+                  (testing "limite non atteinte : 200"
+                    (given @(handler (requete db vue-patient []))
+                      :status := 200)))))
 
 (def ^:private url-vue "http://example.org/fhir/ViewDefinition/pat")
 
@@ -228,3 +243,21 @@
     (testing "JSON invalide"
       (given-failed-future (handler {:body (corps "{")})
         ::anom/category := ::anom/incorrect))))
+
+(deftest handler-status-exige
+  (avec-handler 10 [[(patient "p1") (bibliotheque "l0" "1.0.0" (dissoc vue-patient :status))]]
+                (fn [handler db]
+                  (let [sans (dissoc vue-patient :status)
+                        refus (fn [libelle requete]
+                                (testing libelle
+                                  (given-failed-future (handler requete)
+                                    ::anom/category := ::anom/incorrect
+                                    ::anom/message :# ".*status.*"
+                                    :http/status := 422)))]
+                    (refus "viewResource sans status" (requete db sans []))
+                    (refus "viewReference vers une vue sans status" (requete-reference db url-vue))
+                    (refus "status hors liste" (requete db (assoc vue-patient :status "brouillon") []))
+                    (doseq [v ["draft" "active" "retired" "unknown"]]
+                      (given @(handler (requete db (assoc vue-patient :status v) []))
+                        :status := 200
+                        lignes-ndjson := ["p1"]))))))

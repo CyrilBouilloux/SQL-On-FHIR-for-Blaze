@@ -7,3 +7,7 @@
 (s/fdef validate/validate
   :args (s/cat :view any?)
   :ret (s/nilable ba/anomaly?))
+
+(s/fdef validate/require-status
+  :args (s/cat :view any?)
+  :ret (s/nilable ba/anomaly?))

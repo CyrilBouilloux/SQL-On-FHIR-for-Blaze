@@ -88,7 +88,7 @@ lignes, répond `200` mais :
    Panne : `200` avec taille `0`, ou `Content-Type` `application/fhir+json`. Obtenu le
    2026-10-12 sur un déploiement (image du module `1.11.0-e1e6e58c846c`, jeu de référence, 114 `Patient`) :
    `200 application/x-ndjson 2964` (relevé de départ du 2026-10-10, image nue : `404 … 85`).
-   Rejoué par le cas d'intégration IT-022 (même commande, base d'URL `HAPI_BASE_URL`)
+   Rejoué par le cas d'intégration IT-022 (même commande, base d'URL `FHIR_BASE_URL`)
    — attendu `SUCCES`, code 0 ; en panne `ECHEC` (code 8), message citant IB-12 (T-040).
    La taille suit le nombre de `Patient` : joué avec la suite entière des cas, IT-022 voit
    aussi les 5 `Patient` `fhir-platform-test-*` d'IT-016 et IT-021, supprimés en fin de suite →

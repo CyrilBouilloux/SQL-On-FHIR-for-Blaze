@@ -260,3 +260,19 @@
                          (requete main scheduler (parametres ok {:name "patient" :valueReference {:reference "Patient/zz"}})))
                   (refus "groupe absent" ::anom/not-found 400
                          (requete main scheduler (parametres ok {:name "group" :valueReference {:reference "Group/zz"}}))))))
+
+(deftest status-exige-sans-tache
+  (avec-systeme [handler main admin scheduler dir]
+                @(d/transact main [(bibliotheque "l0" "1.0.0" (dissoc vue-patient :status))])
+                (let [sans (dissoc vue-patient :status)
+                      refus (fn [libelle parametres]
+                              (testing libelle
+                                (given-failed-future (handler (requete main scheduler parametres))
+                                  ::anom/category := ::anom/incorrect
+                                  ::anom/message :# ".*status.*"
+                                  :http/status := 422)
+                                (is (zero? (taches admin)))
+                                (is (= [] (vec (.list dir))))))]
+                  (refus "viewResource sans status" (parametres (vue "pat" sans)))
+                  (refus "viewReference vers une vue sans status" (parametres (reference "a" url-vue)))
+                  (refus "status hors liste" (parametres (vue "pat" (assoc vue-patient :status "brouillon")))))))

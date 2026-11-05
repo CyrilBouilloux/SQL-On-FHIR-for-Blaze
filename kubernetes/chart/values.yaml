@@ -45,6 +45,13 @@ blaze:
   viewdefinitionRun:
     actif: true
     plafondLignes: 10000
+    # VIEWDEFINITION_RUN_TIMEOUT_SECONDS (F-048) : durée maximale d'une exécution, puis interrompue,
+    # refus 422 `timeout` (entier >= 1 ; autre valeur refusée par le chart). Défaut 30 s : même valeur
+    # que SQLQUERY_RUN_TIMEOUT_SECONDS (sqlqueryRun.delaiSecondes), et très en deçà des 600 s de
+    # proxy_read_timeout de nginx. À ajuster au volume de données et à la machine. Mesure de référence :
+    # le run d'une vue Observation filtrée a duré de 53,7 à 56,1 s sur 3 547 403 Observation
+    # (bench/baselines/T-133/mesures-run.txt) : au défaut, il est refusé.
+    delaiSecondes: 30
   # Opération $sqlquery-run (F-039, ADR 0014 point 5), moteur SQL embarqué. OPTIONS DE MISE EN
   # ROUTE, à réviser selon l'usage ; chacune seule, sans reconstruire l'image. Interrupteur INVERSE :
   # `actif: false` pose DISABLE_SQLQUERY_RUN=true ; `true` (défaut) ne pose rien (allumée, sans

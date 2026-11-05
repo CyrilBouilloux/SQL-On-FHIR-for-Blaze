@@ -69,3 +69,73 @@
       (given (validate/validate v)
         ::anom/category := ::anom/incorrect
         ::anom/message :# (str ".*" fragment ".*")))))
+
+(deftest controles-norme-2-0-0-test
+  (testing "F-041 : forEach et forEachOrNull ensemble, à toute profondeur, même identiques"
+    (doseq [[titre select]
+            [["niveau haut" [{:forEach "name" :forEachOrNull "identifier" :column [colonne]}]]
+             ["imbriqué" [{:select [{:forEach "name" :forEachOrNull "identifier" :column [colonne]}]}]]
+             ["expressions identiques" [{:forEach "name" :forEachOrNull "name" :column [colonne]}]]]]
+      (testing titre
+        (given (validate/validate (vue :select select))
+          ::anom/category := ::anom/incorrect
+          ::anom/message :# ".*forEach.*forEachOrNull.*"))))
+  (testing "F-041 : l'un des deux seul reste admis"
+    (is (nil? (validate/validate (vue :select [{:forEach "name" :column [colonne]}]))))
+    (is (nil? (validate/validate (vue :select [{:forEachOrNull "name" :column [colonne]}])))))
+  (testing "F-042 : nom de vue et de constante hors motif"
+    (doseq [[titre v nom fragment]
+            [["vue, chiffre" (vue :name "1vue") "1vue" "name"]
+             ["vue, souligné" (vue :name "_vue") "_vue" "name"]
+             ["vue, tiret" (vue :name "vue-a") "vue-a" "name"]
+             ["constante, chiffre" (vue :constant [{:name "1c" :valueString "x"}]) "1c" "constant"]
+             ["constante, souligné" (vue :constant [{:name "_c" :valueString "x"}]) "_c" "constant"]
+             ["constante, tiret" (vue :constant [{:name "c-d" :valueString "x"}]) "c-d" "constant"]]]
+      (testing titre
+        (given (validate/validate v)
+          ::anom/category := ::anom/incorrect
+          ::anom/message :# (str ".*" nom ".*" fragment ".*|.*" fragment ".*" nom ".*")))))
+  (testing "F-042 : noms valides, ou nom de vue absent"
+    (is (nil? (validate/validate (vue :name "vue_1" :constant [{:name "c_1" :valueString "x"}]))))
+    (is (nil? (validate/validate (vue)))))
+  (testing "F-044 : types déclarés différents à une même position d'unionAll"
+    (let [i {:column [{:name "v" :path "id" :type "id"}]}
+          bo {:column [{:name "v" :path "active" :type "boolean"}]}
+          nt {:column [{:name "v" :path "active"}]}
+          u (fn [& branches] (vue :select [{:unionAll (vec branches)}]))]
+      (doseq [[titre v] [["directes" (u i bo)]
+                         ["imbriquée" (u {:select [i]} bo)]
+                         ["trois branches, non consécutives" (u i nt bo)]
+                         ["trois branches imbriquées" (u {:select [i]} {:select [nt]} {:select [bo]})]]]
+        (testing titre
+          (given (validate/validate v)
+            ::anom/category := ::anom/incorrect
+            ::anom/message :# #"(?s).*column `v`.*\"id\".*\"boolean\".*")))
+      (is (nil? (validate/validate (u i nt i))))
+      (is (nil? (validate/validate (u i i))))
+      (is (nil? (validate/validate (u i nt))))))
+  (testing "F-044 : unionAll sans branche, à plat et imbriqué, n'est pas refusé"
+    (is (nil? (validate/validate (vue :select [{:unionAll []}]))))
+    (is (nil? (validate/validate (vue :select [{:select [{:unionAll []}]}]))))
+    (is (nil? (validate/validate (vue :select [{:unionAll [{:unionAll []}]}]))))
+    (is (nil? (validate/validate (vue :select [{:unionAll [{}]}]))))
+    (is (nil? (validate/validate (vue :select [{:unionAll [{} {}]}]))))
+    (is (nil? (validate/validate (vue :constant []))))))
+
+(deftest status-test
+  (testing "F-043 : valeur hors publication-status, partout"
+    (doseq [v ["brouillon" "" "Active" 1]]
+      (given (validate/validate (vue :status v))
+        ::anom/category := ::anom/incorrect
+        ::anom/message :# (str ".*status.*" (pr-str v) ".*"))))
+  (testing "F-043 : les quatre valeurs de la norme"
+    (doseq [v ["draft" "active" "retired" "unknown"]]
+      (is (nil? (validate/validate (vue :status v))))
+      (is (nil? (validate/require-status (vue :status v))))))
+  (testing "F-043 : absence tolérée par le moteur, refusée par `require-status`"
+    (is (nil? (validate/validate (vue))))
+    (given (validate/require-status (vue))
+      ::anom/category := ::anom/incorrect
+      ::anom/message :# ".*status.*"))
+  (testing "F-043 : `require-status` ne juge pas une vue qui n'est pas un objet"
+    (is (nil? (validate/require-status [])))))
