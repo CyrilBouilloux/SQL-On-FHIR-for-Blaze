@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Déploiement blaze-platform</title>
+<!-- Diagramme de déploiement du module sql-on-fhir sur Kubernetes. Aucune version ici :
+     versions.env fait foi. Composants relevés dans kubernetes/chart/templates/ le 2026-11-05. -->
+<style>
+:root{--bg:#fafaf8;--fg:#1c1c1a;--mut:#6b6b66;--card:#fff;--bd:#c9c8c0;--soft:#f0efe9;--a:#2a6fdb;--mod:#d9822b;--modbg:#fdf1e4;--ok:#2e9d6a;--no:#9a9a93}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161615;--fg:#ececE8;--mut:#9a9a93;--card:#202020;--bd:#47463f;--soft:#26261f;--a:#6aa3f5;--mod:#f0a04e;--modbg:#3a2c1c;--ok:#55c595;--no:#77766f}}
+:root[data-theme="dark"]{--bg:#161615;--fg:#ececE8;--mut:#9a9a93;--card:#202020;--bd:#47463f;--soft:#26261f;--a:#6aa3f5;--mod:#f0a04e;--modbg:#3a2c1c;--ok:#55c595;--no:#77766f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,sans-serif}
+main{max-width:980px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:28px;margin:0 0 4px}h2{font-size:20px;margin:40px 0 8px}h3{font-size:16px;margin:24px 0 6px}
+p.s{color:var(--mut);margin:0 0 16px}
+a{color:var(--a)}
+code{font:13px/1.4 ui-monospace,monospace;background:var(--soft);padding:1px 4px;border-radius:4px}
+pre{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px;overflow-x:auto;font:13px/1.5 ui-monospace,monospace}
+pre code{background:none;padding:0}
+figure{margin:24px 0;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;overflow-x:auto}
+figure svg{min-width:760px;width:100%;height:auto;display:block}
+figcaption{font-size:13px;color:var(--mut);margin-top:8px}
+svg text{fill:var(--fg);font:11.5px system-ui,sans-serif}
+svg .t{font-weight:600}svg .m{fill:var(--mut)}svg .c{font:10.5px ui-monospace,monospace}
+svg .box{fill:var(--card);stroke:var(--bd);stroke-width:1.2}
+svg .zone{fill:var(--soft);stroke:var(--bd);stroke-width:1.2}
+svg .ns{fill:none;stroke:var(--a);stroke-width:1.4;stroke-dasharray:6 4}
+svg .mod{fill:var(--modbg);stroke:var(--mod);stroke-width:1.6}
+svg .opt{fill:none;stroke:var(--no);stroke-width:1.2;stroke-dasharray:4 4}
+svg .ar{stroke:var(--fg);stroke-width:1.3;fill:none;marker-end:url(#fl)}
+svg .ar2{stroke:var(--mut);stroke-width:1.2;fill:none;stroke-dasharray:4 3;marker-end:url(#fl2)}
+svg #fl path{fill:var(--fg)}svg #fl2 path{fill:var(--mut)}
+table{border-collapse:collapse;width:100%;font-size:14px;margin:8px 0}
+th,td{border-bottom:1px solid var(--bd);padding:7px 8px;text-align:left;vertical-align:top}
+th{color:var(--mut);font-weight:600}
+.tw{overflow-x:auto}
+.leg{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--mut);margin-top:8px}
+.leg span::before{content:"";display:inline-block;width:14px;height:10px;margin-right:6px;vertical-align:-1px;border:1.5px solid var(--bd);background:var(--card)}
+.leg .l-mod::before{border-color:var(--mod);background:var(--modbg)}
+.leg .l-ns::before{border:1.5px dashed var(--a);background:none}
+.leg .l-opt::before{border:1.5px dashed var(--no);background:none}
+ul.ck{list-style:none;padding-left:0}ul.ck li{padding-left:26px;position:relative;margin:6px 0}
+ul.ck li::before{content:"☐";position:absolute;left:2px;color:var(--mut)}
+.note{font-size:14px;color:var(--mut)}
+</style>
+</head>
+<body>
+<main>
+<h1>Déploiement du module SQL on FHIR</h1>
+<p class="s">Composants nécessaires, du poste de construction au cluster Kubernetes, et prérequis à remplir avant
+d'installer. Complète la section « Déployer » du <a href="../README.md#déployer">README</a>. Aucune version n'est
+écrite ici : <a href="../versions.env"><code>versions.env</code></a> est la seule source.</p>
+
+<h2>Diagramme de déploiement</h2>
+<figure>
+<svg viewBox="0 0 960 670" role="img" aria-labelledby="dt dd">
+<title id="dt">Diagramme de déploiement</title>
+<desc id="dd">Le poste construit le jar du module et l'image du module à partir de l'image Blaze publiée et du jar duckdb_jdbc ; l'image est poussée dans un registre si le cluster est distant ; Helm déploie dans le namespace blaze un Service et un Deployment nginx, un Service et un StatefulSet Blaze, deux volumes persistants et un volume temporaire ; les NetworkPolicy ne laissent joindre Blaze que par nginx.</desc>
+<defs>
+<marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z"/></marker>
+<marker id="fl2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z"/></marker>
+</defs>
+
+<!-- Sources externes -->
+<rect class="box" x="20" y="18" width="125" height="58" rx="6"/>
+<text class="t" x="30" y="38">Docker Hub</text>
+<text class="c" x="30" y="54">samply/blaze</text>
+<text class="m" x="30" y="69">par empreinte</text>
+<rect class="box" x="155" y="18" width="125" height="58" rx="6"/>
+<text class="t" x="165" y="38">Maven Central</text>
+<text class="c" x="165" y="54">duckdb_jdbc</text>
+<text class="m" x="165" y="69">empreinte vérifiée</text>
+<rect class="box" x="470" y="18" width="190" height="58" rx="6"/>
+<text class="t" x="480" y="38">Client HTTP</text>
+<text class="c" x="480" y="54">curl $FHIR/…</text>
+<text class="m" x="480" y="69">port-forward 8088 → 8090</text>
+<rect class="box" x="760" y="18" width="180" height="58" rx="6"/>
+<text class="t" x="770" y="38">Docker Hub</text>
+<text class="c" x="770" y="54">nginx-unprivileged</text>
+<text class="m" x="770" y="69">par empreinte</text>
+
+<!-- Poste de construction -->
+<rect class="zone" x="20" y="110" width="260" height="300" rx="8"/>
+<text class="t" x="32" y="130">Poste de construction</text>
+<rect class="mod" x="35" y="142" width="230" height="50" rx="6"/>
+<text class="c" x="45" y="162">build/construire-jar.sh</text>
+<text class="m" x="45" y="180">→ build/blaze-addon.jar</text>
+<rect class="box" x="35" y="207" width="230" height="50" rx="6"/>
+<text class="c" x="45" y="227">make check</text>
+<text class="m" x="45" y="245">versions, M1–M6, plafond _include</text>
+<rect class="mod" x="35" y="272" width="230" height="50" rx="6"/>
+<text class="c" x="45" y="292">make image</text>
+<text class="m" x="45" y="310">→ blaze-platform-module:&lt;tag&gt;</text>
+<rect class="box" x="35" y="337" width="230" height="58" rx="6"/>
+<text class="c" x="45" y="357">kubernetes/chart/deriver.sh</text>
+<text class="c" x="45" y="374">helm upgrade --install</text>
+<text class="m" x="45" y="389">kubectl, helm</text>
+<path class="ar" d="M150,192V205"/><path class="ar" d="M150,257V270"/>
+<path class="ar2" d="M82,76V108"/><path class="ar2" d="M217,76V108"/>
+<text class="m" x="88" y="98">tirées par make image</text>
+
+<!-- Registre -->
+<rect class="opt" x="298" y="268" width="135" height="74" rx="6"/>
+<text class="t" x="308" y="288">Registre</text>
+<text class="m" x="308" y="304">si cluster distant</text>
+<text class="c" x="308" y="320">registry + digest</text>
+<text class="m" x="308" y="335">(optionnel)</text>
+<path class="ar2" d="M265,297H296"/>
+<path class="ar2" d="M433,305H448"/>
+<path class="ar" d="M265,366H448"/>
+<text class="m" x="300" y="384">déploie le chart</text>
+
+<!-- Cluster -->
+<rect class="zone" x="450" y="110" width="490" height="452" rx="8"/>
+<text class="t" x="462" y="130">Cluster Kubernetes</text>
+<rect class="ns" x="465" y="142" width="460" height="330" rx="8"/>
+<text class="t" x="477" y="162" style="fill:var(--a)">Namespace blaze · PSA restricted</text>
+
+<rect class="box" x="478" y="180" width="140" height="54" rx="6"/>
+<text class="t" x="488" y="200">Service nginx</text>
+<text class="c" x="488" y="216">:8090</text>
+<text class="m" x="488" y="229">ClusterIP | NodePort</text>
+<rect class="box" x="478" y="262" width="140" height="78" rx="6"/>
+<text class="t" x="488" y="282">Pod nginx</text>
+<text class="m" x="488" y="298">Deployment</text>
+<text class="m" x="488" y="313">ConfigMap nginx.conf</text>
+<text class="m" x="488" y="328">sonde /healthz</text>
+
+<rect class="box" x="636" y="262" width="110" height="54" rx="6"/>
+<text class="t" x="644" y="282">Service blaze</text>
+<text class="c" x="644" y="298">:8080</text>
+
+<rect class="mod" x="764" y="180" width="155" height="160" rx="6"/>
+<text class="t" x="780" y="200">Pod blaze-0</text>
+<text class="m" x="780" y="216">StatefulSet, 1 réplique</text>
+<text class="m" x="780" y="236">image du module :</text>
+<text class="c" x="780" y="254">addon/blaze-addon.jar</text>
+<text class="c" x="780" y="270">addon/duckdb_jdbc.jar</text>
+<text class="c" x="780" y="286">jar de samply/blaze</text>
+<text class="m" x="780" y="306">sonde /health</text>
+<text class="m" x="774" y="322">réglages : variables</text>
+
+<rect class="box" x="478" y="372" width="140" height="54" rx="6"/>
+<text class="t" x="488" y="392">emptyDir</text>
+<text class="c" x="488" y="410">/tmp</text>
+<rect class="box" x="636" y="372" width="110" height="54" rx="6"/>
+<text class="t" x="644" y="392">PVC data</text>
+<text class="c" x="644" y="410">/app/data</text>
+<text class="m" x="644" y="440">RocksDB</text>
+<rect class="box" x="764" y="372" width="155" height="54" rx="6"/>
+<text class="t" x="774" y="392">PVC &lt;release&gt;-export</text>
+<text class="c" x="774" y="410">/app/export</text>
+<text class="m" x="774" y="440">conservé à uninstall</text>
+<text class="m" x="478" y="460">NetworkPolicy : refus par défaut · nginx ← :8090 · blaze ← nginx seul :8080</text>
+
+<path class="ar" d="M545,76V178"/>
+<path class="ar" d="M545,234V260"/>
+<path class="ar" d="M618,289H634"/>
+<path class="ar" d="M746,289H762"/>
+<path class="ar2" d="M850,76V178"/>
+<path class="ar2" d="M842,340V370"/>
+<path class="ar2" d="M790,340L715,370"/>
+<path class="ar2" d="M770,332L600,372"/>
+
+<text class="m" x="462" y="496">Prérequis du cluster (non fournis par le chart) :</text>
+<text x="462" y="514">· StorageClass par défaut, deux volumes ReadWriteOnce</text>
+<text x="462" y="531">· CNI qui applique les NetworkPolicy · Pod Security Admission</text>
+<text x="462" y="548">· nœuds qui lisent l'image du module (locale ou registre)</text>
+
+<!-- Cible non déployée -->
+<text class="m" x="20" y="596">Architecture cible, pas encore déployée par le chart :</text>
+<rect class="opt" x="20" y="606" width="170" height="44" rx="6"/><text x="32" y="633">Ingress et TLS</text>
+<rect class="opt" x="205" y="606" width="170" height="44" rx="6"/><text x="217" y="633">Fournisseur OpenID</text>
+<rect class="opt" x="390" y="606" width="170" height="44" rx="6"/><text x="402" y="633">Frontend Blaze</text>
+<rect class="opt" x="575" y="606" width="170" height="44" rx="6"/><text x="587" y="633">Validateur externe</text>
+<rect class="opt" x="760" y="606" width="180" height="44" rx="6"/><text x="772" y="633">Serveur de terminologie</text>
+</svg>
+<div class="leg"><span class="l-mod">produit par ce dépôt (module)</span><span>brique tierce ou objet Kubernetes</span><span class="l-ns">namespace du chart</span><span class="l-opt">optionnel ou non déployé</span></div>
+<figcaption>Flèche pleine : requête ou geste ; tiretée : tirage d'image, montage de volume. Relevé : <code>helm template</code> rend
+<code>ConfigMap 1, Deployment 1, Namespace 1, NetworkPolicy 3, PersistentVolumeClaim 1, Service 2, StatefulSet 1</code>
+(<a href="architecture.md">architecture.md</a>, 2026-11-05) ; le PVC <code>data</code> vient du <code>volumeClaimTemplate</code>.</figcaption>
+</figure>
+
+<h2>Composants</h2>
+<div class="tw"><table>
+<tr><th>Composant</th><th>Objet</th><th>Fichier qui fait foi</th><th>Rôle</th></tr>
+<tr><td>Jar du module</td><td><code>build/blaze-addon.jar</code></td><td><a href="construction.md">construction.md</a></td><td>sources Clojure du module et overlay <code>blaze.edn</code>, posé devant le jar de Blaze</td></tr>
+<tr><td>Image du module</td><td><code>blaze-platform-module:&lt;tag&gt;</code></td><td><a href="../build/Dockerfile"><code>build/Dockerfile</code></a></td><td>unique <code>FROM</code> l'image Blaze publiée épinglée ; ajoute le jar du module et <code>duckdb_jdbc</code></td></tr>
+<tr><td>Namespace</td><td><code>Namespace blaze</code></td><td><a href="../kubernetes/chart/templates/namespace.yaml"><code>namespace.yaml</code></a></td><td>Pod Security <code>restricted</code> appliquée</td></tr>
+<tr><td>Reverse proxy</td><td><code>Service</code> + <code>Deployment nginx</code>, <code>ConfigMap</code></td><td><a href="../kubernetes/chart/templates/nginx.yaml"><code>nginx.yaml</code></a>, <a href="../nginx/nginx.conf"><code>nginx/nginx.conf</code></a></td><td>seule entrée (port 8090) ; plafond <code>_include</code>/<code>_revinclude</code>, sonde <code>/healthz</code></td></tr>
+<tr><td>Blaze + module</td><td><code>Service</code> + <code>StatefulSet blaze</code></td><td><a href="../kubernetes/chart/templates/blaze.yaml"><code>blaze.yaml</code></a></td><td>serveur FHIR R4 standalone, opérations <code>$viewdefinition-run</code>, <code>$viewdefinition-export</code>, <code>$sqlquery-run</code></td></tr>
+<tr><td>Base RocksDB</td><td>PVC <code>data</code></td><td><a href="../kubernetes/chart/templates/blaze.yaml"><code>blaze.yaml</code></a></td><td>journal et ressources ; taille et classe : <code>blaze.stockage</code></td></tr>
+<tr><td>Fichiers d'export</td><td>PVC <code>&lt;release&gt;-export</code></td><td><a href="../kubernetes/chart/templates/export-pvc.yaml"><code>export-pvc.yaml</code></a></td><td>sorties de <code>$viewdefinition-export</code> ; conservé à <code>helm uninstall</code></td></tr>
+<tr><td>Cloisonnement réseau</td><td><code>NetworkPolicy</code> ×3</td><td><a href="../kubernetes/chart/templates/networkpolicy.yaml"><code>networkpolicy.yaml</code></a></td><td>Blaze joignable par nginx seul ; interrupteur <code>reseau.politiques</code></td></tr>
+</table></div>
+<p class="note">Ressources demandées, tailles de volumes et réglages : <a href="../kubernetes/chart/values.yaml"><code>values.yaml</code></a>
+et <a href="configuration.md">configuration.md</a> (chaque clé, chaque variable).</p>
+
+<h2>Prérequis</h2>
+<h3>Poste de construction</h3>
+<ul class="ck">
+<li><code>bash</code>, <code>make</code>, <code>git</code>, <code>python3</code>, <code>docker</code>, <code>curl</code>, <code>jq</code>, <code>unzip</code>, <code>tar</code>, <code>sha256sum</code> — liste du
+<a href="../README.md#démarrage-rapide">README, « Démarrage rapide »</a> ; <a href="../scripts/outils.sh"><code>scripts/outils.sh</code></a> refuse (code 3) si manque <code>curl</code>, <code>unzip</code>, <code>tar</code>, <code>sha256sum</code>, <code>docker</code> ou <code>git</code>.</li>
+<li>Le dossier est un dépôt git, fichiers suivis : le jar n'archive que ceux-là (<a href="construction.md">construction.md</a>, étape 2/4).</li>
+<li>Accès réseau à Docker Hub et à Maven Central au moment de <code>make image</code> (<a href="construction.md">construction.md</a>).</li>
+<li>Aucun JDK pour le jar ni pour l'image. Pour développer le module (tests, conformité) : <code>make outils</code>, puis <a href="methode-module.md">methode-module.md</a>.</li>
+</ul>
+<h3>Cluster et poste de déploiement</h3>
+<ul class="ck">
+<li><code>kubectl</code> et <code>helm</code> sur le poste ; versions visées : clés <code>KUBECTL_VERSION</code>, <code>HELM_VERSION</code> et <code>K8S_MINOR</code> de <a href="../versions.env"><code>versions.env</code></a> (<code>K8S_MINOR</code> fixe la version de la politique <code>restricted</code> du namespace).</li>
+<li>Une <code>StorageClass</code> <strong>par défaut</strong> qui sert deux volumes <code>ReadWriteOnce</code>, ou une classe nommée par <code>blaze.stockage.classe</code> et <code>blaze.viewdefinitionExport.stockage.classe</code>.</li>
+<li>Un CNI qui <strong>applique</strong> les <code>NetworkPolicy</code> (sans lui elles sont acceptées mais sans effet).</li>
+<li>Des nœuds qui lisent l'image du module : image locale chargée sur les nœuds, ou registre lisible par eux avec <code>image.blaze.registry</code> et <code>image.blaze.digest</code> (<a href="configuration.md">configuration.md</a>).</li>
+<li>Mémoire disponible pour le pod Blaze au moins égale à sa limite (<code>ressources.blaze</code> de <a href="../kubernetes/chart/values.yaml"><code>values.yaml</code></a>).</li>
+</ul>
+<p class="note">Pour essayer sans cluster : prérequis et lancement de la démonstration docker compose dans
+<a href="../demo/README.md#prérequis">demo/README.md, « Prérequis »</a> (outil de poste, hors livraison).</p>
+
+<h2>Installer, dans l'ordre</h2>
+<pre><code>build/construire-jar.sh          # jar du module
+scripts/outils.sh jar            # jar de l'image publiée, pour la comparaison de make check
+make check                       # SUCCES attendu
+make image                       # image du module
+kubernetes/chart/deriver.sh      # Chart.yaml et values-versions.yaml dérivés de versions.env
+helm upgrade --install blaze kubernetes/chart -n blaze -f kubernetes/chart/values-versions.yaml \
+  --set image.blaze.repository="$IMAGE" --set image.blaze.tag="$TAG"</code></pre>
+<p>La création du namespace avec ses métadonnées d'adoption, le calcul de <code>TAG</code> et le cas du registre sont
+dans <a href="../README.md#déployer">README, « Déployer »</a> ; chaque étape de construction dans
+<a href="construction.md">construction.md</a>.</p>
+<p>Joindre l'API depuis le poste (<code>exposition.type: ClusterIP</code>, défaut) :</p>
+<pre><code>kubectl -n blaze port-forward svc/nginx 8088:8090
+export FHIR=http://localhost:8088/fhir</code></pre>
+<p class="note">Commande <em>non mesurée</em> dans ce dépôt ; <code>8088</code> est le port de <code>blaze.baseUrl</code> par défaut. Avec
+<code>exposition.type: NodePort</code>, l'API est sur le port <code>exposition.nodePort</code> de chaque nœud.
+L'API est ouverte, sans authentification : usage local uniquement (<a href="../README.md">README</a>, avertissement).</p>
+</main>
+</body>
+</html>

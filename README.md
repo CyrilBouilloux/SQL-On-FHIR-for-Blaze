@@ -52,6 +52,7 @@ docker compose de [`demo/README.md`](demo/README.md). Kubernetes reste la seule 
 | `kubernetes/chart/` | chart Helm de la livraison ; `nginx/` : configuration du proxy |
 | `versions.env` | seule source des versions et empreintes |
 | `docs/architecture.md`, `docs/configuration.md`, `docs/manuel.md` | ce qui existe, où se règle quoi (chaque paramètre), comment le vérifier |
+| [`docs/deploiement.html`](docs/deploiement.html) | diagramme de déploiement, composants nécessaires, prérequis du poste et du cluster |
 | `docs/methode-module.md`, `docs/couverture.md`, `docs/impacts-blaze.md` | développement du module, couverture, points d'extension de Blaze touchés |
 
 ## Démarrage rapide
@@ -462,6 +463,12 @@ Les versions viennent de `versions.env` (jamais de `latest`) ; le chart est
 `kubernetes/chart/`, paramétré par `kubernetes/chart/values.yaml` (la base
 publique de l'API se règle par `blaze.baseUrl` ; réglages : `docs/configuration.md`).
 
+**Prérequis**, en plus de ceux du [Démarrage rapide](#démarrage-rapide) : `kubectl` et `helm`
+(versions : `versions.env`), une `StorageClass` par défaut servant deux volumes
+`ReadWriteOnce`, un CNI qui applique les `NetworkPolicy`, des nœuds qui lisent l'image du
+module. Diagramme de déploiement, composants et liste complète :
+[docs/deploiement.html](docs/deploiement.html).
+
 Le chart déploie l'image **du module** (`make image`) et refuse de se rendre sans
 `image.blaze.tag`. Un cluster distant suppose cette image **publiée dans un registre**
 qu'il sait lire : poussez-la sous le dépôt et l'étiquette ci-dessous
@@ -556,6 +563,7 @@ demonstration in [`demo/README.md`](demo/README.md). Kubernetes remains the only
 | `kubernetes/chart/` | Helm chart of the delivery; `nginx/`: proxy configuration |
 | `versions.env` | single source of versions and digests |
 | `docs/architecture.md`, `docs/configuration.md`, `docs/manuel.md` | what exists, where each setting lives (every parameter), how to verify it |
+| [`docs/deploiement.html`](docs/deploiement.html) | deployment diagram, required components, workstation and cluster prerequisites (in French) |
 | `docs/methode-module.md`, `docs/couverture.md`, `docs/impacts-blaze.md` | module development, coverage, Blaze extension points touched |
 
 ### Quick start
@@ -964,6 +972,11 @@ make -s -C modules/sql-on-fhir vue-ndjson VUE=/tmp/view.json RESSOURCES=/tmp/pat
 Versions come from `versions.env` (never `latest`); the chart is `kubernetes/chart/`,
 configured by `kubernetes/chart/values.yaml` (the public API base is set with `blaze.baseUrl`;
 settings: `docs/configuration.md`).
+
+**Prerequisites**, on top of those of the [Quick start](#quick-start): `kubectl` and `helm`
+(versions: `versions.env`), a default `StorageClass` serving two `ReadWriteOnce` volumes, a CNI
+that enforces `NetworkPolicy`, nodes that can read the module image. Deployment diagram,
+components and full list (in French): [docs/deploiement.html](docs/deploiement.html).
 
 The chart deploys the **module** image (`make image`) and refuses to render without
 `image.blaze.tag`. A remote cluster requires that image to be **pushed to a registry** it can
