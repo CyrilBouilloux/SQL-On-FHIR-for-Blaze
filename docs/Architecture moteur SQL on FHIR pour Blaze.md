@@ -1,6 +1,6 @@
 # Architecture : moteur SQL on FHIR pour Blaze
 
-Oct 8, 2026 · @marcelo · état mis à jour le 2026-11-05
+Oct 8, 2026 · Cyril Bouilloux · état mis à jour le 2026-11-05
 
 Un moteur de ViewDefinitions s'ajoute à Blaze sous la forme d'un nouveau module qui lit la base existante à un instant `t` fixe, sans dupliquer les données.
 
