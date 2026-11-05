@@ -1,6 +1,6 @@
 # Manuel — ce qui existe, ce qui n'existe pas
 
-<!-- Tenu par `architect`. Décrit l'état au 2026-10-17, complété le 2026-10-28 (`$sqlquery-run`) ; toute affirmation porte la
+<!-- Tenu par `architect`. Décrit l'état au 2026-10-17, complété le 2026-10-28 (`$sqlquery-run`) et le 2026-11-05 (contrôles de la vue, durée de `$viewdefinition-run`) ; toute affirmation porte la
      commande qui la vérifie. Mis à jour dans la même invocation que l'événement qui le
      périme. -->
 
@@ -43,7 +43,7 @@ Les commandes se lancent depuis la racine du dépôt. Celles du module demandent
 | Contrôles N0 : jar, versions, module complémentaire, plafond `_include` | `make check` | code 0, `SUCCES` M1 à M6 | identique, 2026-10-17 (copie du dossier publié, après `scripts/outils.sh jar`) |
 | Plafond de `_include` déclaré par le chart égal à celui de nginx | `python3 scripts/check_gardefou7.py` | `plafond _include = 5 (values.yaml = nginx.conf)` | identique, code 0, 2026-10-17 |
 | Image du module, construite **sur** l'image Blaze publiée, jar du module devant celui de Blaze | `make image` | code 0, image `blaze-platform-module:dev` | code 0, 2026-10-17 (copie du dossier publié, `IMAGE=` étiquette d'essai) |
-| L'image démarre et déclare les deux opérations du module | bloc `docker run` … `curl` du « Démarrage rapide » du `README.md` | `2` | `2`, 2026-10-17 ; sans les quatre variables `VIEWDEFINITION_EXPORT_*` : arrêt, code 1, `Assertion failed on key :blaze.job/viewdefinition-export` |
+| L'image démarre et déclare `$viewdefinition-run` et `$viewdefinition-export` | bloc `docker run` … `curl` du « Démarrage rapide » du `README.md` | `2` | `2`, 2026-10-17 ; sans les quatre variables `VIEWDEFINITION_EXPORT_*` : arrêt, code 1, `Assertion failed on key :blaze.job/viewdefinition-export` |
 | Fonctions et opérateurs FHIRPath ajoutés à Blaze (`join`, `lowBoundary`, `or`, `<`, `+`, `%rowIndex`, constantes typées…) ; fonctions de texte `startsWith`, `endsWith`, `contains`, `upper`, `lower`, `length`, `substring`, `indexOf`, `replace` et opérateurs `~`, `!~` (entrée vide → vide, `~` faux, `!~` vrai ; plusieurs éléments → 422 nommant fonction et cardinalité ; `matches`, `replaceMatches`, `trim`, `toChars` refusées en nommant la fonction). *Décidé, non mesuré* contre une implémentation de référence : `substring(start)` avec `start` égal à la longueur rend `''` ; `~` entre non-chaînes délègue à `=` de Blaze (décimaux non arrondis, sans la règle d'équivalence des dates) | `make -C modules/sql-on-fhir test` | `… 0 failures.` | `249 tests, 2104 assertions, 0 failures.`, code 0, 2026-11-03 (`bench/baselines/T-126-n2/reprise/qualite.txt`) |
 | Moteur de vues en mémoire : la suite de conformité | `make -C modules/sql-on-fhir conformance` | `REUSSIS 144/144  ECHEC 0  NON-BRANCHE 0`, code 0 | identique, 2026-10-17 |
 | Le moteur n'a pas besoin de la base de Blaze | `make -C modules/sql-on-fhir independance` | `SUCCES`, code 0 | `SUCCES : REUSSIS 144/144  ECHEC 0  NON-BRANCHE 0 ; 0 namespace blaze.db / blaze.interaction chargé`, code 0, 2026-10-17 |
@@ -186,6 +186,6 @@ revue de la ligne 4, `bench/baselines/T-126-n2/correction/`, et après sa repris
 | Manque | Mesure de l'absence (domaine écrit) |
 |---|---|
 | Image du module publiée dans un registre | `kubernetes/chart/values.yaml` : `image.blaze.tag` sans défaut, posé au déploiement (bloc « Déployer » du `README.md`) ; aucun registre fourni |
-| Relecture d'un export en colonnes (Parquet) | `/usr/bin/grep -rlE 'parquet' modules/sql-on-fhir/src` → aucun fichier, code 1, 2026-10-17 |
-| Validateur de profils, fournisseur OpenID, frontend Blaze, Ingress, serveur de terminologie | `docs/architecture.md`, « Architecture cible » : composants non déployés, relevé `helm template` du 2026-10-17 |
+| Relecture d'un export en colonnes (Parquet) | `/usr/bin/grep -rlE 'parquet' modules/sql-on-fhir/src` → aucun fichier, code 1, 2026-10-17, identique le 2026-11-05 |
+| Validateur de profils, fournisseur OpenID, frontend Blaze, Ingress, serveur de terminologie | `docs/architecture.md`, « Architecture cible » : composants non déployés, relevé `helm template` du 2026-10-17, identique le 2026-11-05 |
 | Search parameters ajoutés | `blaze/search-parameters.json` absent |

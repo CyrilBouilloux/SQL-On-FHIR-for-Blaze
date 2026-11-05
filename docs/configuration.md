@@ -3,7 +3,7 @@
 <!-- Tenu par `architect`. Chaque section nomme le fichier qui fait foi ; les défauts
      recopiés dans les tables de paramètres le sont parce que F-034 l'exige (« nom, rôle,
      défaut ») : en cas d'écart, le fichier nommé l'emporte. Aucune version, aucun secret.
-     État au 2026-10-17. -->
+     État au 2026-10-17 ; clés et défauts relus contre `kubernetes/chart/values.yaml` le 2026-11-05. -->
 
 *Français ci-dessous — [English below](#english).*
 

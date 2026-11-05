@@ -3,6 +3,45 @@ Blaze v1.11.0 (image publiée, épinglée par empreinte) · module sql-on-fhir
 
 Ce journal sert de base au message du commit initial du dossier publié.
 
+=== 2026-11-05 — depuis la publication initiale ===
+
+== Module sql-on-fhir ==
+- Opération $sqlquery-run : requête SQL (SELECT seul) sur des vues rangées, moteur DuckDB embarqué
+  (duckdb_jdbc), base en mémoire ouverte puis fermée à chaque appel ; Library SQLQuery en ligne
+  ou par référence, paramètres liés par nom ; plafonds de durée, de mémoire, de concurrence et
+  de lignes ; interrupteur DISABLE_SQLQUERY_RUN ; limites L1 à L18 : ADR 0014.
+- Contrôles de la norme SQL on FHIR 2.0.0 sur la vue reçue, refus 422 (ADR 0015) : forEach et
+  forEachOrNull exclusifs dans un select ; noms de vue et de constante utilisables comme noms de
+  table ; status exigé et limité à draft, active, retired, unknown ; types déclarés des branches
+  d'unionAll identiques.
+- $viewdefinition-run borné en durée : VIEWDEFINITION_RUN_TIMEOUT_SECONDS (clé
+  blaze.viewdefinitionRun.delaiSecondes, défaut 30 s), échéance vérifiée avant chaque lot de 100
+  ressources lues, refus 422 timeout, jamais de réponse tronquée ; à ajuster au volume de données
+  et à la machine.
+
+== Livraison ==
+- build/Dockerfile : jar duckdb_jdbc téléchargé de Maven Central, empreinte de versions.env
+  vérifiée, posé dans le classpath après le jar du module.
+- Chart : clés blaze.sqlqueryRun.* (interrupteur, durée, mémoire, concurrence) et
+  blaze.viewdefinitionRun.delaiSecondes ; limite mémoire du pod Blaze portée à 2560Mi.
+- scripts/check_versions.py contrôle aussi la version de duckdb_jdbc entre versions.env et
+  modules/sql-on-fhir/deps.edn.
+
+== Décisions ==
+- ADR 0014 (moteur SQL embarqué) et ADR 0015 (contrôles de la vue dans le module), acceptées.
+- ADR 0016 (where d'une vue poussé en recherche Blaze), proposée, différée.
+
+== Retraits ==
+- Reliquats de fhir-platform : docs/cql.md, docs/cql/, scripts/cql.sh.
+
+== Documentation ==
+- README : requêtes SQL sur les vues ($sqlquery-run), limites, paramétrage, retrait.
+- docs/configuration.md, docs/manuel.md, docs/architecture.md, docs/couverture.md,
+  docs/impacts-blaze.md, docs/construction.md, « Architecture moteur SQL on FHIR pour Blaze »
+  mis à jour ; copie hors ligne de la norme SQL on FHIR 2.0.0 (docs/normes/).
+
+=== 2026-10-25 — publication initiale ===
+
 == Module complémentaire sql-on-fhir (modules/sql-on-fhir/) ==
 - Évaluateur FHIRPath étendu et moteur de vues SQL on FHIR, sans base de données.
 - Opération $viewdefinition-run : exécution d'une ViewDefinition, format de sortie choisi

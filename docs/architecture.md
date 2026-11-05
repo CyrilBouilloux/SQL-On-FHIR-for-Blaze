@@ -1,7 +1,8 @@
 # Architecture — ce qui existe
 
 <!-- Tenu par `architect`. Décrit l'existant, renvoie aux ADR sans les recopier ; aucune
-     version, aucun secret. État au 2026-10-17, complété le 2026-10-28 (`$sqlquery-run`). -->
+     version, aucun secret. État au 2026-10-17, complété le 2026-10-28 (`$sqlquery-run`) et le 2026-11-05 (contrôles de
+     la vue, limite de durée de `$viewdefinition-run`). -->
 
 ## Architecture cible
 
@@ -28,7 +29,7 @@ par une ADR.
 | Validateur externe | validation de profils avant persistance | non déployé |
 | Serveur de terminologie | terminologie du validateur | non déployé |
 
-Relevé du 2026-10-17 : `helm template blaze kubernetes/chart -n blaze -f kubernetes/chart/values-versions.yaml --set image.blaze.tag=essai | /usr/bin/grep -E '^kind:' | sort | uniq -c`
+Relevé du 2026-10-17, identique le 2026-11-05 : `helm template blaze kubernetes/chart -n blaze -f kubernetes/chart/values-versions.yaml --set image.blaze.tag=essai | /usr/bin/grep -E '^kind:' | sort | uniq -c`
 → `ConfigMap 1, Deployment 1, Namespace 1, NetworkPolicy 3, PersistentVolumeClaim 1, Service 2, StatefulSet 1`, aucun `Ingress` ;
 la même sortie filtrée par `/usr/bin/grep -ciE 'keycloak|frontend|validator|openid|terminolog'` → `0`.
 
@@ -86,4 +87,6 @@ Blaze dans le classpath, et jar du moteur SQL `duckdb_jdbc` (F-039) télécharg�
 
 Parquet : `docs/couverture.md` §5.
 
-SQL sur les vues (`$sqlquery-run`) : livré (couche « Opération `$sqlquery-run` » ci-dessus), F-039 non encore validé (revue T-121) ; usage, limites et paramètres : `README.md`, « Requêtes SQL sur les vues ».
+`where` d'une vue poussé en recherche Blaze (planificateur de lecture, `DS-08`) : [ADR 0016](adr/0016-where-de-viewdefinition-pousse-en-recherche-blaze.md), `proposée`, différée ; aujourd'hui le `where` est évalué en mémoire sur toutes les ressources du type, et la durée d'une exécution est bornée (`VIEWDEFINITION_RUN_TIMEOUT_SECONDS`, `docs/configuration.md`).
+
+SQL sur les vues (`$sqlquery-run`) : livré (couche « Opération `$sqlquery-run` » ci-dessus) ; usage, limites et paramètres : `README.md`, « Requêtes SQL sur les vues ».

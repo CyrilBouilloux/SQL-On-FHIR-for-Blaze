@@ -1,6 +1,6 @@
 # Architecture : moteur SQL on FHIR pour Blaze
 
-Oct 8, 2026 · @marcelo
+Oct 8, 2026 · @marcelo · état mis à jour le 2026-11-05
 
 Un moteur de ViewDefinitions s'ajoute à Blaze sous la forme d'un nouveau module qui lit la base existante à un instant `t` fixe, sans dupliquer les données.
 
@@ -25,29 +25,29 @@ La légende sous le schéma distingue l'existant, le développement à faire et 
 
 ## Inventaire des composants
 
-Au 2026-10-08, sur 19 composants, 7 existaient déjà, 3 étaient à étendre et 9 à développer. La colonne Statut garde cette nature (`scripts/avancement.py` la lit) ; ce que F-006 (`validé` le 2026-10-12) et F-007 (`validé` le 2026-10-13) ont livré est dans la colonne Remarque.
+Au 2026-10-08, sur 19 composants, 7 existaient déjà, 3 étaient à étendre et 9 à développer. La colonne Statut garde cette nature (`scripts/avancement.py` la lit), sauf qu'un composant à développer dont toutes les opérations sont faites y passe à `Développé`. Au 2026-11-05 : 7 développés, 2 encore à développer (sérialiseur Parquet, planificateur de lecture), les 3 composants à étendre faits. Ce que chaque élément a livré est dans la colonne Remarque, avec son `F-xxx`.
 
 | Couche | Composant | Statut | Rôle | Remarque |
 | --- | --- | --- | --- | --- |
 | API | API FHIR de Blaze | Existant | Reçoit les requêtes, publie le CapabilityStatement | Opérations actuelles : `$cql`, `$evaluate-measure`, `$everything`… |
 | API | Requêtes asynchrones | À étendre | Répond 202 puis permet d'interroger l'avancement (`__async-status`) | L'export a ses routes `__export/{status,result,file}/<jeton>` (202, 303, 200) ; `__async-status` d'une tâche d'export rend 404 (ADR 0008 R2) ; Blaze non étendu (F-007) |
-| API | `$viewdefinition-run` | À développer | Exécute une vue et renvoie les lignes | Au niveau système en mode R4 ; fait (F-006) |
-| API | `$viewdefinition-export` | À développer | Exporte les vues en NDJSON, CSV ou Parquet | Asynchrone ; fait (F-007) en NDJSON, CSV, JSON ; Parquet : F-008 |
+| API | `$viewdefinition-run` | Développé | Exécute une vue et renvoie les lignes | Au niveau système en mode R4 ; fait (F-006) ; format par `Accept` (F-018) ; vue rangée par `viewReference` (F-011) ; limite de durée, 422 `timeout` (F-048) |
+| API | `$viewdefinition-export` | Développé | Exporte les vues en NDJSON, CSV ou Parquet | Asynchrone ; fait (F-007) en NDJSON, CSV, JSON ; Parquet : F-008, à faire |
 | API | Déclaration des opérations | À étendre | Annonce les nouvelles opérations dans `/fhir/metadata` | Les clients découvrent les capacités par ce point d'entrée ; fait (F-006, F-007) par l'overlay `blaze.edn` |
-| Moteur | Modèle ViewDefinition | À développer | Lit et valide la vue : colonnes, types, constantes | ViewDefinition n'est pas une ressource R4 |
-| Moteur | Compilateur de vue | À développer | Transforme `select`, `forEach`, `forEachOrNull`, `unionAll` et `where` en une fonction ressource vers lignes | Noyau pur, sans accès à la base |
-| Moteur | Évaluateur FHIRPath | À étendre | Évalue les expressions des colonnes et du `where` | Existe dans modules/fhir-path mais ne couvre que 5 des 12 fonctions de la suite de conformité : voir Travaux 1 |
+| Moteur | Modèle ViewDefinition | Développé | Lit et valide la vue : colonnes, types, constantes | ViewDefinition n'est pas une ressource R4 ; fait (F-005) ; contrôles de la norme 2.0.0 sur la vue reçue (F-041 à F-044, ADR 0015) |
+| Moteur | Compilateur de vue | Développé | Transforme `select`, `forEach`, `forEachOrNull`, `unionAll` et `where` en une fonction ressource vers lignes | Noyau pur, sans accès à la base ; fait (F-005, 144 cas sur 144) |
+| Moteur | Évaluateur FHIRPath | À étendre | Évalue les expressions des colonnes et du `where` | Existe dans modules/fhir-path mais ne couvre que 5 des 12 fonctions de la suite de conformité : voir Travaux 1 ; étendu (F-004, fonctions de texte F-017) |
 | Moteur | Types FHIR internes | Existant | Ressources en maps Clojure, primitifs accessibles comme types système FHIRPath | Sert à typer les colonnes |
-| Moteur | Sérialiseurs de lignes | À développer | NDJSON, CSV, JSON, puis Parquet | Fait (F-006) pour NDJSON, CSV, JSON ; Parquet : `parquet-hadoop` choisi (ADR 0005), F-008 |
-| Moteur | Gestion des exports | À développer | Suit les tâches et conserve les fichiers de résultat | Fait (F-007) : `Task` de l'ordonnanceur de Blaze ; fichiers sur le PVC `<release>-export` (ADR 0008) |
-| Moteur | Planificateur de lecture | À développer | Traduit patient, `_since` et filtres simples en accès aux index | Optionnel dans la première version |
-| Stockage | Source de données | À développer | Lit les ressources d'un type à un `t` fixe, en flux | Seul composant qui s'adresse à la base ; fait (F-006) |
+| Moteur | Sérialiseurs de lignes | À développer | NDJSON, CSV, JSON, puis Parquet | Fait (F-006) pour NDJSON, CSV, JSON ; Parquet : `parquet-hadoop` choisi (ADR 0005), F-008, à faire |
+| Moteur | Gestion des exports | Développé | Suit les tâches et conserve les fichiers de résultat | Fait (F-007) : `Task` de l'ordonnanceur de Blaze ; fichiers sur le PVC `<release>-export` (ADR 0008) |
+| Moteur | Planificateur de lecture | À développer | Traduit patient, `_since` et filtres simples en accès aux index | Optionnel dans la première version ; `patient`, `group`, `_since` faits dans la source (F-006) ; `where` poussé en recherche : ADR 0016, proposée, différée |
+| Stockage | Source de données | Développé | Lit les ressources d'un type à un `t` fixe, en flux | Seul composant qui s'adresse à la base ; fait (F-006) ; échéance vérifiée avant chaque paquet de 100 ressources (F-048) |
 | Stockage | Valeur de base à `t` | Existant | Instantané cohérent de la base | Déjà utilisé pour la pagination des recherches |
 | Stockage | Index des versions et du temps | Existant | Liste par type (`ResourceAsOf`, `TypeAsOf`), conversion d'un instant en `t` (`TByInstant`) |  |
 | Stockage | Index de recherche et compartiments | Existant | Filtres par paramètre, ressources d'un Patient |  |
 | Stockage | Document store | Existant | Contenu des ressources, en CBOR |  |
 | Tests | Suite de conformité SQL on FHIR | Existant | Cas JSON partagés : vue, ressources, lignes attendues | Dépôt `FHIR/sql-on-fhir.js` |
-| Plus tard | Moteur SQL embarqué | Développé | Exécute `$sqlquery-run` sur les tables de vues | F-039, ADR 0014 (`duckdb_jdbc`), à valider |
+| Plus tard | Moteur SQL embarqué | Développé | Exécute `$sqlquery-run` sur les tables de vues | Fait (F-039, `validé` le 2026-10-28) : ADR 0014, `duckdb_jdbc` |
 
 ## Parcours d'une requête
 
@@ -63,7 +63,7 @@ Chaque besoin du moteur trouve un mécanisme déjà présent dans Blaze ; seule 
 | --- | --- | --- |
 | Lire toutes les ressources d'un type | Index `ResourceAsOf` et `TypeAsOf`, parcourus par type | Fait (F-006) : `d/type-list` puis `d/pull-many` par paquets de 100, lus à la demande |
 | Obtenir un export cohérent | Valeur de base immuable identifiée par `t` | Fait (F-007) : `t` de la requête rangé dans la `Task`, base de la tâche synchronisée à ce `t` |
-| Appliquer un `where` simple | Requête par type (`type-query`) : scan d'un index, puis vérification des autres clauses | Reconnaître quelques motifs (égalité sur un code) ; le reste est filtré en FHIRPath sur les ressources lues |
+| Appliquer un `where` simple | Requête par type (`type-query`) : scan d'un index, puis vérification des autres clauses | Reconnaître quelques motifs (égalité sur un code) ; le reste est filtré en FHIRPath sur les ressources lues. Non fait : tout `where` est évalué en FHIRPath sur le type entier, la durée suit le volume du type (mesure et voie : ADR 0016, proposée, différée) ; une exécution est bornée en durée (F-048) |
 | Restreindre à un patient | Index de compartiment (`CompartmentResourceType`) | Fait (F-006) : `d/compartment-type-list`, `d/compartment-query` |
 | Filtrer avec `_since` | `TByInstant` convertit un instant en `t` | Fait (F-006) : requête `_lastUpdated=gt<instant>`, sans `TByInstant` ; créées ou modifiées strictement après |
 | Ignorer les ressources supprimées | Une valeur de base ne contient pas les ressources supprimées avant son `t` | Aucune |
@@ -130,7 +130,7 @@ Cette partie relie le moteur à la couche de persistance de Blaze et expose les 
 
 | Élément | Comment le faire |
 | --- | --- |
-| Adaptateur de source | Utiliser `blaze.db.api` : `d/db` pour obtenir une vue stable, `d/type-list` pour parcourir un type, `d/type-query` avec `compile-type-query` et `execute-query` quand la vue a une clause `where` traduisible en recherche, `d/compartment-type-list` pour un patient, `d/new-batch-db` et `d/pull-many` pour charger les ressources. Lire les signatures exactes dans `modules/db/src/blaze/db/api.clj`. Fait (F-006) sans `d/new-batch-db` ni `compile-type-query` : le `where` reste évalué en FHIRPath (`DS-08` à faire). |
+| Adaptateur de source | Utiliser `blaze.db.api` : `d/db` pour obtenir une vue stable, `d/type-list` pour parcourir un type, `d/type-query` avec `compile-type-query` et `execute-query` quand la vue a une clause `where` traduisible en recherche, `d/compartment-type-list` pour un patient, `d/new-batch-db` et `d/pull-many` pour charger les ressources. Lire les signatures exactes dans `modules/db/src/blaze/db/api.clj`. Fait (F-006) sans `d/new-batch-db` ni `compile-type-query` : le `where` reste évalué en FHIRPath (`DS-08` à faire, ADR 0016 proposée, différée) ; échéance de durée vérifiée avant chaque paquet de 100 ressources (F-048). |
 | Opération synchrone | Prendre pour modèle `modules/operation-cql` : composant Integrant avec `ig/init-key` et `m/pre-init-spec`, handler au niveau système, enregistrement dans `resources/blaze.edn` derrière une variable d'environnement de type `:toggle`. Fait (F-006) : overlay généré, `DISABLE_VIEWDEFINITION_RUN`. |
 | Documentation | Documenter la variable dans `docs/deployment/environment-variables.md` et l'opération sous `docs/api/`. Ces pages n'existent pas dans ce dépôt : variables dans `docs/configuration.md`, usage et écarts à l'IG dans `docs/manuel.md`. |
 | Type ViewDefinition en R4 | La ressource n'est pas dans le modèle R4. Décidé (ADR 0005, amendement du 2026-10-10) : corps lu brut par `:post-middleware`, type non déclaré (l'option A, modèle étendu par un dépôt de StructureDefinition enveloppé, est abandonnée) ; vues en ligne (`viewResource`) — amendé le 2026-10-13 : vue rangée en `Library`, désignée par canonique (ADR 0009 ; mise en œuvre F-011, `validé` le 2026-10-14). |
@@ -261,7 +261,7 @@ Le moteur est une fonction pure dans le nouveau module ; il n'utilise ni `blaze.
 | Code | Opération | Stratégie | Dépend de | Critère propre | Statut |
 | --- | --- | --- | --- | --- | --- |
 | `VE-01` | Modèle de la vue et validation de structure : `resource`, `select`, `where`, `constant`, noms de colonnes | `S-PUR` | `INF-02`, `SPK-02` | Une vue mal formée donne une anomalie `incorrect` | Fait (F-005) |
-| `VE-02` | Validation sémantique de la vue (fichier `validate`, 5 cas) | `S-PUR` | `VE-01` | 5 cas sur 5 | Fait (F-005) |
+| `VE-02` | Validation sémantique de la vue (fichier `validate`, 5 cas) | `S-PUR` | `VE-01` | 5 cas sur 5 | Fait (F-005) ; contrôles de la norme 2.0.0 ajoutés : `forEach` et `forEachOrNull` exclusifs (F-041), noms de vue et de constante (F-042), `status` (F-043) ; ADR 0015 |
 | `VE-03` | Compilation unique de chaque expression FHIRPath avec `fhir-path/compile` et réutilisation sur toutes les ressources | `S-PUR` | `VE-01`, `FP-15` | Aucune recompilation par ressource, vérifiée par un test | Fait (F-005) |
 | `VE-04` | Clause `where` (8 cas) | `S-PUR` | `VE-03`, `FP-02`, `FP-07`, `FP-08` | 8 cas sur 8 | Fait (F-005) |
 | `VE-05` | Colonnes simples et typage (fichiers `columns` et `basic`, 11 cas) | `S-PUR` | `VE-03` | 11 cas sur 11 | Fait (F-005) |
@@ -271,7 +271,7 @@ Le moteur est une fonction pure dans le nouveau module ; il n'utilise ni `blaze.
 | `VE-09` | `forEach` | `S-PUR` | `VE-08` | Cas `forEach` de la suite passés | Fait (F-005) |
 | `VE-10` | `forEachOrNull` | `S-PUR` | `VE-09` | Les 13 cas de `forEach` et `forEachOrNull` passés au total | Fait (F-005) |
 | `VE-11` | `repeat` (19 cas) | `S-PUR` | `VE-09` | 19 cas sur 19 ; arrêt sur cycle ou répétition | Fait (F-005) |
-| `VE-12` | `unionAll` (10 cas) | `S-PUR` | `VE-08` | 10 cas sur 10 ; colonnes différentes = anomalie | Fait (F-005) |
+| `VE-12` | `unionAll` (10 cas) | `S-PUR` | `VE-08` | 10 cas sur 10 ; colonnes différentes = anomalie | Fait (F-005) ; types déclarés des branches comparés (F-044, ADR 0015) |
 | `VE-13` | Constantes de la vue (8 cas de vue plus 14 cas de fonctions) | `S-PUR` | `VE-03`, `FP-12` | 22 cas sur 22 | Fait (F-005) |
 | `VE-14` | `%rowIndex` (9 cas) | `S-PUR` | `VE-09`, `FP-13` | 9 cas sur 9 | Fait (F-005) |
 | `VE-15` | Contrôle du type de ressource ciblé (3 cas) | `S-PUR` | `VE-01` | 3 cas sur 3 | Fait (F-005) |
@@ -294,7 +294,7 @@ Ce jalon relie le moteur à la base de Blaze et expose l'opération synchrone. L
 | `DS-05` | Source en mémoire : ressources fournies dans la requête (paramètre `resource`) | `S-ADP` | `VE-18` | **Écarté** (décision humaine du 2026-10-10, F-006 Q4) : `resource` refusé par 400 + `OperationOutcome` `not-supported` (`OP-02`) | Écarté |
 | `DS-06` | Limite `_limit` appliquée sans lire plus que nécessaire | `S-ADP` | `DS-01` | Lecture interrompue dès la limite atteinte | Fait (F-006) : lecture par paquets de 100 ressources, arrêtée au paquet qui atteint la limite |
 | `DS-07` | Capture d'une seule valeur de base par requête | `S-ADP` | `DS-01` | Une écriture pendant la lecture n'apparaît pas dans les lignes | Fait (F-006) |
-| `DS-08` | Planificateur de lecture (optionnel) : traduire un `where` simple en requête de type (`compile-type-query`, `execute-query`) | `S-ADP` | `DS-01`, `VE-04` | Résultat identique à la lecture complète, plus rapide sur un grand jeu de données | À faire |
+| `DS-08` | Planificateur de lecture (optionnel) : traduire un `where` simple en requête de type (`compile-type-query`, `execute-query`) | `S-ADP` | `DS-01`, `VE-04` | Résultat identique à la lecture complète, plus rapide sur un grand jeu de données | À faire : voie décrite par l'ADR 0016 (proposée, différée) |
 | `OP-01` | Entrée de la ViewDefinition en R4 selon la décision `SPK-02` | `S-OPS` | `SPK-02`, `VE-01` | Un `Parameters` avec `viewResource` est accepté | Fait (F-006) : corps lu brut, `ViewDefinition` non déclarée |
 | `OP-02` | Lecture des paramètres : `viewReference`, `viewResource`, `_format`, `header`, `patient`, `group`, `_since`, `_limit`, `resource`, `source` | `S-OPS` | `OP-01` | Ni `viewResource` ni `viewReference` = 400 `required` ; `viewReference` sans schéma (`ViewDefinition/<id>`, `Library/<id>`), `source`, `resource` = 400 `not-supported` ; patient ou groupe absent = 400 `not-found` (F-006, « Requête refusée », « Filtres ») | Fait (F-006 ; `viewReference` : F-011) |
 | `OP-03` | Handler système `$viewdefinition-run` synchrone | `S-OPS` | `OP-02`, `DS-01`, `VE-18` | Renvoie les lignes d'une vue simple | Fait (F-006) |
@@ -303,7 +303,7 @@ Ce jalon relie le moteur à la base de Blaze et expose l'opération synchrone. L
 | `OP-06` | Conversion des anomalies en `OperationOutcome` et codes HTTP : `incorrect` = 422 `invalid`, `unsupported` = 422 `not-supported`, `fault` = 500 `processing` (IG `2.1.0-pre` ; F-006, « Vue refusée ») | `S-OPS` | `OP-03` | Un test par catégorie d'anomalie ; le serveur répond encore après | Fait (F-006) : aucune vue ne produit `fault` |
 | `OP-07` | Composant Integrant et enregistrement dans `resources/blaze.edn` avec interrupteur par variable d'environnement | `S-OPS` | `OP-03` | Opération absente quand l'interrupteur est coupé | Fait (F-006) : `DISABLE_VIEWDEFINITION_RUN`, allumée par défaut |
 | `OP-08` | Déclaration de l'opération dans le CapabilityStatement | `S-OPS` | `OP-07` | Visible dans `/fhir/metadata` | Fait (F-006) |
-| `OP-09` | Garde-fous : nombre maximal de lignes, réglable par une valeur du chart, défaut 10 000 | `S-OPS` | `OP-03` | Résultat au-delà du plafond = 422 `too-costly` et 0 ligne ; `_limit` ≤ plafond servi (F-006, « Plafond de lignes ») ; durée et mémoire : aucun critère, mémoire *à mesurer* | Fait (F-006) : `blaze.viewdefinitionRun.plafondLignes` → `VIEWDEFINITION_RUN_MAX_ROWS` |
+| `OP-09` | Garde-fous : nombre maximal de lignes, réglable par une valeur du chart, défaut 10 000 | `S-OPS` | `OP-03` | Résultat au-delà du plafond = 422 `too-costly` et 0 ligne ; `_limit` ≤ plafond servi (F-006, « Plafond de lignes ») ; durée et mémoire : aucun critère, mémoire *à mesurer* | Fait (F-006) : `blaze.viewdefinitionRun.plafondLignes` → `VIEWDEFINITION_RUN_MAX_ROWS` ; durée (F-048) : `blaze.viewdefinitionRun.delaiSecondes` → `VIEWDEFINITION_RUN_TIMEOUT_SECONDS`, défaut 30 s, au-delà 422 `timeout` |
 | `OP-10` | Niveaux instance et type de l'opération si les vues sont stockées | `S-OPS` | `OP-05` | Sans objet tant que le type `ViewDefinition` n'est pas stocké : les vues se rangent en `Library` (ADR 0009) ; niveau système seul déclaré | À faire |
 | `OP-11` | Documentation de l'API et des variables d'environnement | `S-DOC` | `OP-08` | Pages `docs/api/` et `docs/deployment/environment-variables.md` à jour | À faire : ni `docs/api/` ni `docs/deployment/` dans ce dépôt ; variables dans `docs/configuration.md`, écarts à l'IG dans `docs/manuel.md` |
 | `SR-01` | Sérialiseur NDJSON | `S-SER` | `VE-17` | Une ligne JSON par ligne de vue | Fait (F-006) |
@@ -335,14 +335,14 @@ Le modèle asynchrone existant (`Prefer: respond-async`, `__async-status`) répo
 
 ## J5 : Plus tard
 
-Option, hors de la présente livraison (ADR 0005, amendement du 2026-10-14) : les quatre codes restent « À faire ».
+Option écartée de la livraison par l'ADR 0005 (amendement du 2026-10-14), reprise par son amendement du 2026-10-26 et l'ADR 0014 : `SQ-01` à `SQ-03` faits (F-039), `SQ-04` reste à faire.
 
 | Code | Opération | Stratégie | Dépend de | Critère propre | Statut |
 | --- | --- | --- | --- | --- | --- |
-| `SQ-01` | Exposer les vues comme tables pour le moteur SQL | `S-PUR` | `VE-20` | Une vue apparaît comme une table avec son schéma | En cours (F-039 : livré, à valider) |
-| `SQ-02` | Moteur SQL embarqué pour `$sqlquery-run` (choix du moteur à décider d'abord) | `S-SPK` | `SQ-01` | Décision écrite, puis opérations dérivées créées | En cours (F-039 : livré, à valider) |
-| `SQ-03` | Opération `$sqlquery-run` | `S-OPS` | `SQ-02`, `OP-07` | Une requête sur une vue renvoie les lignes attendues | En cours (F-039 : livré, à valider) |
-| `SQ-04` | Utilisation des index de Blaze pour accélérer les filtres des vues | `S-ADP` | `DS-08`, `TS-03` | Gain mesuré par `TS-03` | À faire |
+| `SQ-01` | Exposer les vues comme tables pour le moteur SQL | `S-PUR` | `VE-20` | Une vue apparaît comme une table avec son schéma | Fait (F-039) : une base DuckDB en mémoire par requête |
+| `SQ-02` | Moteur SQL embarqué pour `$sqlquery-run` (choix du moteur à décider d'abord) | `S-SPK` | `SQ-01` | Décision écrite, puis opérations dérivées créées | Fait (F-039) : ADR 0014, `duckdb_jdbc` |
+| `SQ-03` | Opération `$sqlquery-run` | `S-OPS` | `SQ-02`, `OP-07` | Une requête sur une vue renvoie les lignes attendues | Fait (F-039) ; contrôle de `status` des vues (F-043) |
+| `SQ-04` | Utilisation des index de Blaze pour accélérer les filtres des vues | `S-ADP` | `DS-08`, `TS-03` | Gain mesuré par `TS-03` | À faire (ADR 0016, proposée, différée) |
 
 ## Consignes pour l'environnement multi-agents
 
@@ -419,7 +419,7 @@ Réponds ACCEPT ou REJECT. En cas de REJECT, liste chaque écart avec le fichier
 
 ## Suivi d'avancement
 
-État au 2026-10-28 ; source des états : `docs/couverture.md` (tenu par `architect`). Le plan compte 88 opérations.
+État au 2026-11-05 ; source des états : `docs/couverture.md` (tenu par `architect`). Le plan compte 88 opérations.
 
 | Jalon | Opérations | Codes | Faites | En cours | Bloquées | Porte de sortie franchie |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -428,7 +428,7 @@ Réponds ACCEPT ou REJECT. En cas de REJECT, liste chaque écart avec le fichier
 | `J2` | 20 | `VE-01` à `VE-20` | 20 | 0 | 0 | oui (T-023) |
 | `J3` | 24 | `DS-01` à `DS-08`, `OP-01` à `OP-11`, `SR-01` à `SR-03`, `SEC-01`, `TS-01` | 19 | 0 | 0 | non |
 | `J4` | 14 | `AS-01` à `AS-10`, `SR-04`, `SR-05`, `TS-02`, `TS-03` | 10 | 0 | 0 | oui (T-051) |
-| `J5` | 4 | `SQ-01` à `SQ-04` | 0 | 3 | 0 | non |
+| `J5` | 4 | `SQ-01` à `SQ-04` | 3 | 0 | 0 | non |
 
 **Journal des décisions.** L'orchestrateur y note, avec la date, chaque décision `SPK-xx` prise par la personne et chaque opération `Bloqué`.
 
@@ -444,7 +444,7 @@ Sept points sont à trancher ou à vérifier avant de s'engager ; le premier peu
 | Version de la spécification | La spécification est en version 2.1.0-pre et les noms d'opérations varient selon les pages (`$run`, `$viewdefinition-run`) | Figer la version visée avant d'écrire l'API |
 | Couverture FHIRPath | L'évaluateur de Blaze ne couvre que 5 des 12 fonctions de la suite de conformité et aucun opérateur de comparaison | Réaliser les Travaux 1 en premier, test par test, et mesurer le taux de réussite de la suite |
 | Export asynchrone | Le motif existant ne produit pas de fichiers ; durée de vie, espace disque et droits d'accès sont à définir | Cadrer avec le mainteneur avant la phase d'export |
-| Performance sans filtrage | Sans planificateur, une vue parcourt toutes les ressources du type | Mesurer sur un jeu de données réaliste avant d'investir dans le planificateur |
+| Performance sans filtrage | Sans planificateur, une vue parcourt toutes les ressources du type | Mesuré (ADR 0016, 2026-11-04) : 53,7 à 56,1 s pour une vue `Observation` filtrée sur 3 547 403 `Observation`. Durée bornée et réglable (F-048) ; planificateur : ADR 0016, proposée, différée |
 | Parquet | Dépendance supplémentaire sur la JVM | Commencer par NDJSON et CSV ; Parquet en phase 5 |
 | Contribution amont | Le mainteneur préfère le CQL pour les analyses et rappelle que SQL on FHIR demandera du temps | Ouvrir la discussion dans l'issue #1543 avant d'écrire du code |
 
@@ -460,7 +460,7 @@ Sept phases mènent de l'accord de conception à l'export Parquet, chacune avec 
 | 3. Exécution synchrone | `$viewdefinition-run` en NDJSON, CSV et JSON | Appel HTTP de bout en bout, CapabilityStatement à jour | API, sérialiseurs |
 | 4. Export asynchrone | `$viewdefinition-export`, tâches et fichiers de résultat | Export d'un jeu volumineux sans saturer la mémoire, avancement consultable | API asynchrone, gestion des exports |
 | 5. Parquet | Sérialiseur Parquet | Fichier relu par un outil d'analyse externe | Sérialiseurs |
-| 6. SQL (option) | `$sqlquery-run` avec un moteur SQL embarqué | Repris par F-039 (ADR 0005, amendement du 2026-10-26 ; ADR 0014) : livré, à valider | Moteur SQL embarqué |
+| 6. SQL (option) | `$sqlquery-run` avec un moteur SQL embarqué | Repris par F-039 (ADR 0005, amendement du 2026-10-26 ; ADR 0014) : livré, `validé` le 2026-10-28 | Moteur SQL embarqué |
 
 ## Sources
 
